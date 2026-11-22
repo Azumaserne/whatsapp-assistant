@@ -58,20 +58,29 @@ Wer ChatGPT, Claude oder DeepSeek um eine Einschätzung zu einem WhatsApp-Verlau
 
 ## 🚀 Schnellstart
 
-### Option 1: Ein-Klick-PowerShell-Assistent für Windows (Empfohlen)
+### Option 1: Eigenständige Windows-`.exe` (Ohne Einrichtung — Empfohlen)
+
+Unter Windows 10/11 sind weder Node.js noch Git oder `npm install` nötig:
+
+1. Laden Sie `WhatsApp-Assistant-win-x64.exe` von den [**GitHub Releases**](https://github.com/kaka714/whatsapp-assistant/releases/latest) herunter.
+2. Doppelklicken Sie zum Starten und wählen Sie direkt im Fenster Ihre Sprache (**简体中文 / English / Deutsch**).
+3. Folgen Sie dem interaktiven Assistenten im selben Fenster (API-Anbieter, Modellname mit Sofortwarnung bei reinen Textmodellen, API-Schlüssel usw.). Vorhandenes Microsoft Edge / Chrome wird automatisch erkannt.
+4. Scannen Sie anschließend den **WhatsApp-Login-QR-Code im selben Konsolenfenster** mit Ihrem WhatsApp-Zweitkonto.
+5. Alle erfassten Einstellungen, der Gesprächsspeicher und tägliche Markdown-Protokolle werden automatisch auf dem Desktop unter `<Desktop>\WhatsApp-Assistant-Data\` gespeichert.
+
+### Option 2: Windows PowerShell-Starter (`start.cmd` / `whatsapp-assistant.ps1`)
 
 1. Doppelklicken Sie auf **`start.cmd`** (oder starten Sie `pwsh .\whatsapp-assistant.ps1` bzw. `.\whatsapp-assistant.ps1`).
-2. Direkt im **selben Konsolenfenster** prüft das Skript Node.js & Abhängigkeiten automatisch und führt Sie durch alle erforderlichen Eingaben (API-Anbieter, Modellname, API-Schlüssel, Weiterleitungsmodus, Whitelist, Selbstchat & erkannten Browserpfad) — inklusive sofortiger Warnung bei reinen Textmodellen.
-3. Direkt anschließend wird der **WhatsApp-Login-QR-Code im selben Fenster angezeigt**. Scannen Sie ihn mit Ihrem WhatsApp-Zweitkonto unter **Verknüpfte Geräte → Gerät hinzufügen**.
-4. Alle erfassten Einstellungen und täglichen Chat-Analysen werden automatisch auf Ihrem Desktop unter `<Desktop>\WhatsApp-Assistant-Data\` gespeichert:
+2. Das Skript prüft Node.js & Abhängigkeiten automatisch und öffnet denselben dreisprachigen Assistenten samt QR-Konsole.
+3. Alle erfassten Einstellungen und täglichen Chat-Analysen landen unter `<Desktop>\WhatsApp-Assistant-Data\`:
    - `config.env` — gespeicherte Laufzeitkonfiguration
    - `setup-info.txt` — übersichtliche Zusammenfassung aller Eingaben
-   - `memory.json` — Gesprächsverlauf und Analyse-Modi pro Kontakt
+   - `memory.json` — Gesprächsverlauf, Sprache und Analyse-Modi pro Kontakt
    - `records\YYYY-MM-DD.md` — tägliche Markdown-Archive aller Analysen
 
-> Tipp: Bei weiteren Starts genügt die Eingabetaste für den Schnellstart, oder wählen Sie `[2]`, um die Konfiguration anzupassen. Mit `Strg + C` beenden Sie das Programm sauber.
+> Tipp: Bei weiteren Starts genügt die Eingabetaste für den Schnellstart; im Menü lassen sich Sprache oder Einstellungen jederzeit ändern. Mit `Strg + C` sauber beenden.
 
-### Option 2: Manuelle CLI-Einrichtung (macOS / Linux / Server)
+### Option 3: Manuelle CLI-Einrichtung (macOS / Linux / Server)
 
 1. Stellen Sie sicher, dass [Node.js](https://nodejs.org/) **18.0.0 oder neuer** installiert ist, und halten Sie ein **WhatsApp-Zweitkonto** sowie Ihren eigenen **LLM-API-Schlüssel** bereit.
 2. Repository klonen und Abhängigkeiten installieren:
@@ -141,6 +150,7 @@ Sobald der QR-Code erscheint, mit dem WhatsApp-Zweitkonto unter **Verknüpfte Ge
 | `/buffer` | Zeigt Anzahl und Vorschau der aktuell zwischengespeicherten Nachrichten |
 | `/clear` | Leert den Weiterleitungs-Zwischenspeicher, ohne den Chatverlauf zu löschen |
 | `/mode [Name]` | Zeigt oder wechselt den Analyse-Modus (`general` / `summary` / `emotion` / `reply` / `translate`) |
+| `/lang [zh\|en\|de]` | Sprache umschalten (`zh` 中文 / `en` English / `de` Deutsch) |
 | `/reset` | Löscht Gesprächsverlauf sowie Zwischenspeicher und lädt `prompt.txt` neu |
 
 ---
@@ -159,6 +169,7 @@ whatsapp-assistant/
 ├── README.en.md           # Dokumentation (English)
 ├── README.de.md           # Dokumentation (Deutsch)
 ├── src/
+│   ├── i18n.js            # Dreisprachiges Wörterbuch (zh / en / de)
 │   ├── config.js          # Env-Konfiguration, Multimodal-Erkennung & Whitelist-Prüfung
 │   ├── chatExport.js      # Reiner Node-zlib-Parser für .txt- / .zip-Chatexporte
 │   ├── forwardBuffer.js   # Debounce-Sammler pro Absender & /collect-Zustandsverwaltung
@@ -166,20 +177,25 @@ whatsapp-assistant/
 │   ├── memory.js          # Lokale memory.json-Persistenz & Migration alter Formate
 │   ├── llm.js             # OpenAI-kompatibler Client, Nachrichten-Aufteilung & Fehlertexte
 │   ├── recorder.js        # Tägliche Markdown-Analysearchive im Desktop-Ordner
-│   └── handler.js         # Nachrichten-Router, serielle Warteschlange & Selbstchat-Schutz
+│   ├── handler.js         # Nachrichten-Router, serielle Warteschlange & Selbstchat-Schutz
+│   └── cli.js             # Dreisprachiger Einrichtungsassistent & Desktop-Launcher
+├── build/
+│   ├── sea-bootstrap.js   # Selbstentpackender Node-24-SEA-Starter
+│   └── build-exe.js       # Build-Skript für die Windows-.exe & SHA256SUMS
 └── test/
-    └── assistant.test.js  # Integrierte Node-Testsuite (Bündelung, ZIP-Parser, Befehle, Filter)
+    └── assistant.test.js  # Integrierte Node-Testsuite (Bündelung, ZIP, i18n, Befehle, Filter)
 ```
 
 ---
 
-## 🧪 Tests & Überprüfung
+## 🧪 Tests & `.exe`-Build
 
 Das Projekt enthält Offline-Unit-Tests auf Basis des nativen `node:test`-Runners (ohne Browser oder aktive WhatsApp-Sitzung):
 
 ```bash
-npm run check   # Syntaxprüfung aller Quelldateien
-npm test        # Automatisierte Unit-Tests ausführen
+npm run check       # Syntaxprüfung aller Quelldateien
+npm test            # Automatisierte Unit-Tests ausführen
+npm run build:exe   # Eigenständige dist/WhatsApp-Assistant-win-x64.exe unter Windows bauen
 ```
 
 ---

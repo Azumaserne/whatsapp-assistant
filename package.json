@@ -5,8 +5,10 @@
   "main": "index.js",
   "scripts": {
     "start": "node index.js",
+    "cli": "node src/cli.js",
+    "build:exe": "node build/build-exe.js",
     "test": "node --test test/assistant.test.js",
-    "check": "node --check index.js src/config.js src/chatExport.js src/forwardBuffer.js src/prompts.js src/memory.js src/llm.js src/recorder.js src/handler.js"
+    "check": "node --check index.js src/i18n.js src/config.js src/chatExport.js src/forwardBuffer.js src/prompts.js src/memory.js src/llm.js src/recorder.js src/handler.js src/cli.js build/sea-bootstrap.js build/build-exe.js"
   },
   "keywords": [
     "whatsapp",

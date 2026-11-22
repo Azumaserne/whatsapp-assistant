@@ -1,5 +1,6 @@
 const fs = require('fs');
 const path = require('path');
+const { resolveExplicitLang } = require('./i18n');
 
 const VALID_ROLES = new Set(['user', 'assistant']);
 
@@ -25,6 +26,7 @@ class MemoryStore {
                 .map((m) => ({ role: m.role, content: m.content }));
             return {
                 mode: 'general',
+                lang: null,
                 messages: messages.slice(-this.maxHistory)
             };
         }
@@ -38,11 +40,12 @@ class MemoryStore {
                 : [];
             return {
                 mode: typeof rawEntry.mode === 'string' && rawEntry.mode ? rawEntry.mode : 'general',
+                lang: resolveExplicitLang(rawEntry.lang),
                 messages
             };
         }
 
-        return { mode: 'general', messages: [] };
+        return { mode: 'general', lang: null, messages: [] };
     }
 
     _load() {
@@ -68,7 +71,7 @@ class MemoryStore {
 
     _ensureSender(sender) {
         if (!this.data[sender]) {
-            this.data[sender] = { mode: 'general', messages: [] };
+            this.data[sender] = { mode: 'general', lang: null, messages: [] };
         }
         return this.data[sender];
     }
@@ -82,6 +85,17 @@ class MemoryStore {
         entry.mode = mode;
         this.save();
         return entry.mode;
+    }
+
+    getLang(sender) {
+        return this._ensureSender(sender).lang || null;
+    }
+
+    setLang(sender, lang) {
+        const entry = this._ensureSender(sender);
+        entry.lang = resolveExplicitLang(lang);
+        this.save();
+        return entry.lang;
     }
 
     getMessages(sender) {
@@ -101,7 +115,7 @@ class MemoryStore {
     }
 
     reset(sender) {
-        this.data[sender] = { mode: 'general', messages: [] };
+        this.data[sender] = { mode: 'general', lang: null, messages: [] };
         this.save();
     }
 

@@ -1,3 +1,5 @@
+const { t } = require('./i18n');
+
 /**
  * Lazily construct an OpenAI-compatible SDK client so unit tests need not load `openai`.
  * @param {{ apiKey: string, baseUrl: string, timeoutMs?: number }} config
@@ -75,36 +77,37 @@ function splitLongMessage(text, maxLen = 3500) {
 }
 
 /**
- * Translate API and transport errors into actionable Chinese user-facing messages.
+ * Translate API and transport errors into actionable user-facing messages.
  * @param {any} error
+ * @param {string} [lang]
  * @returns {string}
  */
-function formatLlmError(error) {
+function formatLlmError(error, lang = 'zh') {
     const status = error?.status ?? error?.response?.status;
     const msg = String(error?.message || '');
     const lowerMsg = msg.toLowerCase();
 
     if (status === 401 || status === 403) {
-        return '❌ API Key 无效或无权限（401/403），请检查 `.env` 中的 `LLM_API_KEY` 与接口地址是否正确。';
+        return t(lang, 'err.401');
     }
     if (status === 402) {
-        return '❌ API 账户余额不足或额度已用完（402），请检查你的服务商账户余额。';
+        return t(lang, 'err.402');
     }
     if (status === 404) {
-        return '❌ 模型或接口路径不存在（404），请检查 `.env` 中的 `LLM_BASE_URL` 和 `LLM_MODEL`。';
+        return t(lang, 'err.404');
     }
     if (status === 429) {
-        return '⏳ API 请求过于频繁或触发限流（429），请稍后再试。';
+        return t(lang, 'err.429');
     }
     if (status >= 500) {
-        return `⚠️ 模型服务商暂时异常（HTTP ${status}），请稍后重试。`;
+        return t(lang, 'err.5xx', { status });
     }
     if (
         lowerMsg.includes('timeout') ||
         lowerMsg.includes('etimedout') ||
         lowerMsg.includes('abort')
     ) {
-        return '⏳ 调用大模型超时，请检查网络连接或适当调大 `.env` 中的 `LLM_TIMEOUT_MS`。';
+        return t(lang, 'err.timeout');
     }
     if (
         lowerMsg.includes('econnrefused') ||
@@ -112,10 +115,10 @@ function formatLlmError(error) {
         lowerMsg.includes('fetch failed') ||
         lowerMsg.includes('network')
     ) {
-        return '🌐 无法连接到配置的 API 地址，请检查网络、代理设置或 `LLM_BASE_URL`。';
+        return t(lang, 'err.network');
     }
 
-    return `❌ 分析失败：${msg || '未知错误'}`;
+    return t(lang, 'err.generic', { msg: msg || 'Unknown error' });
 }
 
 module.exports = {

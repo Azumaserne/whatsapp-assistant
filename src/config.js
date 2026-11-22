@@ -1,4 +1,5 @@
 const path = require('path');
+const { normalizeLang } = require('./i18n');
 
 const PLACEHOLDER_KEY_PATTERNS = [
     'your-api-key',
@@ -151,8 +152,10 @@ function loadConfig(env = process.env, baseDir = path.resolve(__dirname, '..')) 
     const recordsDir = explicitRecordsDir
         ? path.resolve(explicitRecordsDir)
         : (explicitDataDir ? path.join(dataDir, 'records') : null);
+    const explicitAuthDataPath = (env.AUTH_DATA_PATH || '').trim();
 
     return {
+        lang: normalizeLang(env.UI_LANG || env.APP_LANG, 'zh'),
         apiKey,
         baseUrl,
         model,
@@ -172,6 +175,7 @@ function loadConfig(env = process.env, baseDir = path.resolve(__dirname, '..')) 
         replyDelayMinMs,
         replyDelayMaxMs,
         chromePath: (env.CHROME_PATH || '').trim() || undefined,
+        authDataPath: explicitAuthDataPath ? path.resolve(explicitAuthDataPath) : undefined,
         dataDir,
         recordsDir,
         promptFile: path.join(baseDir, 'prompt.txt'),

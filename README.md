@@ -58,20 +58,29 @@
 
 ## 🚀 快速开始
 
-### 方式一：Windows 一键启动向导（推荐，点击即跑）
+### 方式一：下载 Windows 独立 `.exe`（零配置，双击即跑，推荐）
 
-1. 双击根目录下的 **`start.cmd`**（或直接在 PowerShell 运行 `pwsh .\whatsapp-assistant.ps1` / `.\whatsapp-assistant.ps1`）。
-2. 程序会在**当前命令窗口内**自动检查 Node.js 与依赖，并引导填写所有必要信息（API 服务商预设、模型名、API Key、转发分析模式、白名单、自聊模式、浏览器路径等）；若选择了非多模态纯文本模型会即时给出黄色警告提示。
-3. 配置完成后，**WhatsApp 登录二维码会直接显示在同一个命令窗口中**，打开作为机器人的 **WhatsApp 小号** → **已连接的设备** → **连接设备** 扫码即可。
-4. 所有填写与记录的信息会自动保存到你的桌面目录 `<Desktop>\WhatsApp-Assistant-Data\`：
+无需安装 Node.js、Git 或执行 `npm install`，适合所有 Windows 10/11 用户：
+
+1. 前往 [**GitHub Releases**](https://github.com/kaka714/whatsapp-assistant/releases/latest) 下载 `WhatsApp-Assistant-win-x64.exe`。
+2. 双击运行后，首先在窗口内选择语言：**简体中文 / English / Deutsch**。
+3. 在同一窗口中按向导填写 API 服务商、模型名（若选非多模态纯文本模型会即时弹出警告）、API Key 等选项；程序会自动检测本机 Edge / Chrome 浏览器，无需额外下载 Chromium。
+4. 随后 **WhatsApp 登录二维码会直接显示在当前窗口**，用 **WhatsApp 小号** 扫码连接即可使用。
+5. 所有保存的配置、对话记忆与每日 Markdown 分析档案会自动存放在桌面目录 `<Desktop>\WhatsApp-Assistant-Data\`。
+
+### 方式二：Windows PowerShell 一键脚本
+
+1. 克隆或下载仓库后，双击根目录下的 **`start.cmd`**（或运行 `pwsh .\whatsapp-assistant.ps1` / `.\whatsapp-assistant.ps1`）。
+2. 脚本会自动检查 Node.js 与依赖，并在同一命令窗口进入三语交互向导与扫码界面。
+3. 所有填写与记录的信息同样保存到桌面目录 `<Desktop>\WhatsApp-Assistant-Data\`：
    - `config.env`：运行配置文件
    - `setup-info.txt`：人类可读的配置信息汇总
    - `memory.json`：各联系人的对话记忆与分析模式
    - `records\YYYY-MM-DD.md`：每日聊天分析与原始记录 Markdown 归档
 
-> 提示：后续再次运行只需直接回车即可复用配置启动，也可输入 `2` 重新修改配置；按 `Ctrl + C` 安全退出。
+> 提示：后续再次运行只需直接回车即可复用配置启动，也可在菜单切换语言或重新配置；按 `Ctrl + C` 安全退出。
 
-### 方式二：手动配置启动（macOS / Linux / 服务器）
+### 方式三：手动命令行启动（macOS / Linux / 服务器 / 源码构建）
 
 1. 确保已安装 [Node.js](https://nodejs.org/) **18.0.0 或更高版本**，并准备一个 **WhatsApp 小号** 与你自己的 **大模型 API Key**。
 2. 克隆项目并安装依赖：
@@ -141,6 +150,7 @@ npm start
 | `/buffer` | 查看当前已暂存的转发条数与最近预览 |
 | `/clear` | 清空尚未分析的转发暂存区 |
 | `/mode [名称]` | 查看或切换分析模式（`general` / `summary` / `emotion` / `reply` / `translate`） |
+| `/lang [zh\|en\|de]` | 切换交互与分析语言（`zh` 中文 / `en` English / `de` Deutsch） |
 | `/reset` | 清空当前联系人的历史记忆、暂存区，并热重载 `prompt.txt` |
 
 ---
@@ -159,6 +169,7 @@ whatsapp-assistant/
 ├── README.en.md           # 项目文档（English）
 ├── README.de.md           # 项目文档（Deutsch）
 ├── src/
+│   ├── i18n.js            # 中 / 英 / 德三语多语言词典与文本插值
 │   ├── config.js          # 环境变量解析、多模态模型检测、旧版兼容与白名单校验
 │   ├── chatExport.js      # 纯 Node zlib 实现的 .txt / .zip 导出聊天记录解析与尾部截断
 │   ├── forwardBuffer.js   # Per-sender 转发消息防抖聚合器与 /collect 收集状态管理
@@ -166,20 +177,25 @@ whatsapp-assistant/
 │   ├── memory.js          # 本地 memory.json 持久化与旧版记忆格式自动迁移
 │   ├── llm.js             # OpenAI 兼容接口封装、长消息智能分段与常见错误提示
 │   ├── recorder.js        # 桌面每日 Markdown 分析记录归档器
-│   └── handler.js         # 核心消息调度、串行队列、防自聊死循环与指令路由
+│   ├── handler.js         # 核心消息调度、串行队列、防自聊死循环与指令路由
+│   └── cli.js             # 交互式三语配置向导、语言切换与桌面文件落盘入口
+├── build/
+│   ├── sea-bootstrap.js   # Node 24 SEA 单文件自解压引导器
+│   └── build-exe.js       # 打包独立 Windows .exe 与生成 SHA256SUMS 的构建脚本
 └── test/
-    └── assistant.test.js  # Node 原生测试套件（覆盖转发聚合、ZIP 解析、指令与安全边界）
+    └── assistant.test.js  # Node 原生测试套件（覆盖转发聚合、ZIP 解析、三语、指令与安全边界）
 ```
 
 ---
 
-## 🧪 开发与自检
+## 🧪 开发、测试与打包 `.exe`
 
 项目内置基于 Node 原生 `node:test` 的单元测试（无需启动浏览器或连接真实 WhatsApp）：
 
 ```bash
-npm run check   # 语法检查
-npm test        # 运行自动化测试
+npm run check       # 语法检查
+npm test            # 运行自动化测试
+npm run build:exe   # 在 Windows 上打包 dist/WhatsApp-Assistant-win-x64.exe
 ```
 
 ---

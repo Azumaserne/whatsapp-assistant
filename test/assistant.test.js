@@ -6,11 +6,13 @@ const path = require('node:path');
 const zlib = require('node:zlib');
 
 const { loadConfig, hasValidApiKey, isSenderAllowed, normalizePhone, detectModelMultimodal } = require('../src/config');
+const { resolveExplicitLang, normalizeLang, t } = require('../src/i18n');
 const { isChatExportDocument, extractTextFromZipBuffer, truncateChatHistoryTail, parseChatExportMedia } = require('../src/chatExport');
 const { ForwardSessionManager } = require('../src/forwardBuffer');
 const { MemoryStore } = require('../src/memory');
 const { createLlmService, splitLongMessage, formatLlmError } = require('../src/llm');
 const { createDesktopRecorder, formatDateKey } = require('../src/recorder');
+const { parseEnvText, serializeEnvMap, buildSetupSummaryText } = require('../src/cli');
 const { createMessageHandler } = require('../src/handler');
 
 /**
@@ -718,4 +720,84 @@ test('recorder & DATA_DIR: resolves Desktop data paths, creates nested directori
     } finally {
         fs.rmSync(tmpRoot, { recursive: true, force: true });
     }
+});
+
+test('i18n & /lang: supports zh/en/de switching, localized warnings, /help, and LLM errors', async () => {
+    assert.equal(resolveExplicitLang('English'), 'en');
+    assert.equal(resolveExplicitLang('deutsch'), 'de');
+    assert.equal(resolveExplicitLang('中文'), 'zh');
+    assert.equal(resolveExplicitLang('invalid'), null);
+    assert.equal(normalizeLang('de-AT', 'zh'), 'de');
+    assert.match(t('en', 'bot.lang_switched'), /English/);
+    assert.match(t('de', 'bot.lang_switched'), /Deutsch/);
+
+    assert.match(formatLlmError({ status: 401 }, 'en'), /Invalid API key/);
+    assert.match(formatLlmError({ status: 401 }, 'de'), /Ungültiger API-Schlüssel/);
+
+    const h = createTestHarness({
+        UI_LANG: 'en',
+        LLM_API_KEY: '',
+        DEEPSEEK_API_KEY: 'sk-ds-valid-key-12345'
+    });
+    try {
+        const sender = 'intl@c.us';
+
+        // Default UI_LANG=en
+        await h.handler({ from: sender, body: '/help' });
+        assert.match(h.replies.at(-1).text, /WhatsApp AI Chat History Assistant/);
+        assert.match(h.replies.at(-1).text, /Non-multimodal/);
+
+        // Non-multimodal warning in English
+        await h.handler({ from: sender, body: 'Analyze this' });
+        assert.match(h.replies[1].text, /Model Notice:.*deepseek-chat.*non-multimodal/);
+        assert.match(h.llmCalls[0][0].content, /Respond to the user in English/);
+
+        // Switch sender language to German via /lang de
+        await h.handler({ from: sender, body: '/lang de' });
+        assert.match(h.replies.at(-1).text, /Deutsch/);
+        assert.equal(h.memory.getLang(sender), 'de');
+
+        await h.handler({ from: sender, body: '/help' });
+        assert.match(h.replies.at(-1).text, /Chat-Analyse-Assistent/);
+
+        await h.handler({ from: sender, body: '', hasMedia: true, type: 'image', isForwarded: false });
+        assert.match(h.replies.at(-1).text, /reines Textmodell/);
+
+        // Invalid /lang shows localized error in German
+        await h.handler({ from: sender, body: '/lang fr' });
+        assert.match(h.replies.at(-1).text, /Nicht unterstützte Sprache/);
+    } finally {
+        h.cleanup();
+    }
+});
+
+test('cli & config: parses/serializes env, formats masked Desktop setup summary, and resolves AUTH_DATA_PATH', () => {
+    const raw = '\uFEFF# comment\nUI_LANG=de\nLLM_API_KEY="sk-secret-12345678"\nLLM_MODEL=deepseek-chat\n';
+    const parsed = parseEnvText(raw);
+    assert.equal(parsed.UI_LANG, 'de');
+    assert.equal(parsed.LLM_API_KEY, 'sk-secret-12345678');
+
+    const serialized = serializeEnvMap(parsed);
+    assert.match(serialized, /UI_LANG=de/);
+    assert.match(serialized, /LLM_MODEL=deepseek-chat/);
+
+    const mmInfo = detectModelMultimodal(parsed.LLM_MODEL, 'auto');
+    const summaryDe = buildSetupSummaryText(
+        parsed,
+        {
+            configEnvPath: 'C:\\Desktop\\config.env',
+            setupInfoPath: 'C:\\Desktop\\setup-info.txt',
+            memoryPath: 'C:\\Desktop\\memory.json',
+            recordsGlob: 'C:\\Desktop\\records\\YYYY-MM-DD.md'
+        },
+        mmInfo,
+        'de'
+    );
+    assert.match(summaryDe, /Desktop-Konfiguration/);
+    assert.match(summaryDe, /sk-s\*\*\*\*5678/);
+    assert.equal(summaryDe.includes('sk-secret-12345678'), false);
+
+    const cfg = loadConfig({ UI_LANG: 'de', AUTH_DATA_PATH: 'C:\\LocalApp\\wwebjs_auth' });
+    assert.equal(cfg.lang, 'de');
+    assert.equal(cfg.authDataPath, path.resolve('C:\\LocalApp\\wwebjs_auth'));
 });

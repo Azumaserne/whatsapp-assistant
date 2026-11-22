@@ -1,8 +1,9 @@
 const { hasValidApiKey, isSenderAllowed } = require('./config');
 const { isChatExportDocument, parseChatExportMedia } = require('./chatExport');
+const { SUPPORTED_LANGS, LANG_META, resolveExplicitLang, t } = require('./i18n');
 const {
-    ANALYSIS_MODES,
     MODE_NAMES,
+    getModeDetails,
     buildSystemPrompt,
     buildForwardedAnalysisPrompt,
     buildExportedChatPrompt,
@@ -70,6 +71,13 @@ function createMessageHandler({
     /** @type {Set<string>} */
     const warnedNonMultimodalSenders = new Set();
 
+    function getActiveLang(sender) {
+        if (memory && typeof memory.getLang === 'function') {
+            return memory.getLang(sender) || config.lang || 'zh';
+        }
+        return config.lang || 'zh';
+    }
+
     function trackSentMessageId(msgId) {
         if (!msgId) return;
         sentMessageIds.add(msgId);
@@ -85,7 +93,7 @@ function createMessageHandler({
             .catch(() => {})
             .then(task)
             .catch((error) => {
-                logger.error(`处理联系人 ${sender} 任务异常:`, error);
+                logger.error(`Error handling sender ${sender}:`, error);
             })
             .finally(() => {
                 if (senderQueues.get(sender) === next) {
@@ -138,11 +146,8 @@ function createMessageHandler({
 
     async function ensureApiKeyReady(sender) {
         if (hasValidApiKey(config)) return true;
-        await deliverReply(
-            sender,
-            '⚠️ 助手尚未配置有效的 API Key。请先在项目 `.env` 文件中填写 `LLM_API_KEY`（自备 API）并重启程序。',
-            { applyDelay: false }
-        );
+        const lang = getActiveLang(sender);
+        await deliverReply(sender, t(lang, 'bot.missing_key'), { applyDelay: false });
         return false;
     }
 
@@ -150,7 +155,8 @@ function createMessageHandler({
         if (config.multimodal?.supported) return;
         if (reason === 'initial' && warnedNonMultimodalSenders.has(sender)) return;
 
-        const warning = buildNonMultimodalWarning(config, reason);
+        const lang = getActiveLang(sender);
+        const warning = buildNonMultimodalWarning(config, reason, lang);
         if (!warning) return;
 
         warnedNonMultimodalSenders.add(sender);
@@ -178,7 +184,7 @@ function createMessageHandler({
             }
             return `data:${mime};base64,${media.data}`;
         } catch (error) {
-            logger.error('下载图片失败，已回退为文本分析:', error);
+            logger.error('Failed to download image attachment; falling back to text:', error);
             return null;
         }
     }
@@ -188,8 +194,9 @@ function createMessageHandler({
 
         await maybeSendNonMultimodalWarning(sender, preWarningReason);
 
+        const lang = getActiveLang(sender);
         const mode = memory.getMode(sender);
-        const systemPrompt = buildSystemPrompt(config.promptFile, mode);
+        const systemPrompt = buildSystemPrompt(config.promptFile, mode, lang);
         const history = memory.getMessages(sender);
         const maxImages = config.maxImagesPerBatch || 4;
         const validImages = config.multimodal?.supported
@@ -225,17 +232,18 @@ function createMessageHandler({
                         kind: recordKind,
                         mode,
                         model: config.model,
+                        lang,
                         inputText: userPromptText,
                         replyText
                     });
                 } catch (recError) {
-                    logger.error('记录分析历史失败:', recError);
+                    logger.error('Failed to record analysis history:', recError);
                 }
             }
         } catch (error) {
             await clearTyping(sender);
-            logger.error('LLM 调用失败:', error);
-            await deliverReply(sender, formatLlmError(error), { applyDelay: false });
+            logger.error('LLM request failed:', error);
+            await deliverReply(sender, formatLlmError(error, lang), { applyDelay: false });
         }
     }
 
@@ -243,9 +251,10 @@ function createMessageHandler({
         const items = forwardManager.consume(sender, { exitCollectMode });
         if (items.length === 0) return false;
 
+        const lang = getActiveLang(sender);
         const mode = memory.getMode(sender);
         const transcript = forwardManager.formatItems(items);
-        const prompt = buildForwardedAnalysisPrompt(transcript, question, mode);
+        const prompt = buildForwardedAnalysisPrompt(transcript, question, mode, lang);
         const hasMediaItems = items.some((it) => Boolean(it.mediaType));
         const maxImages = config.maxImagesPerBatch || 4;
         const imageDataUrls = items
@@ -267,22 +276,20 @@ function createMessageHandler({
 
         const cmd = match[1].toLowerCase();
         const arg = (match[2] || '').trim();
+        const lang = getActiveLang(sender);
 
         switch (cmd) {
             case 'help':
             case 'start': {
                 const mode = memory.getMode(sender);
-                await deliverReply(sender, buildHelpText(config, mode), { applyDelay: false });
+                await deliverReply(sender, buildHelpText(config, mode, lang), { applyDelay: false });
                 return true;
             }
             case 'reset': {
                 forwardManager.clear(sender, { exitCollectMode: true });
                 memory.reset(sender);
-                await deliverReply(
-                    sender,
-                    '✅ 已清空当前会话记忆与转发暂存区，并重新加载最新 `prompt.txt`（模式已恢复为 `general`）。',
-                    { applyDelay: false }
-                );
+                const postResetLang = getActiveLang(sender);
+                await deliverReply(sender, t(postResetLang, 'bot.reset_ok'), { applyDelay: false });
                 return true;
             }
             case 'clear': {
@@ -290,8 +297,8 @@ function createMessageHandler({
                 await deliverReply(
                     sender,
                     cleared > 0
-                        ? `🗑️ 已清空转发暂存区中的 ${cleared} 条记录。`
-                        : 'ℹ️ 当前转发暂存区本来就是空的。',
+                        ? t(lang, 'bot.clear_ok', { count: cleared })
+                        : t(lang, 'bot.clear_empty'),
                     { applyDelay: false }
                 );
                 return true;
@@ -299,15 +306,15 @@ function createMessageHandler({
             case 'buffer': {
                 const status = forwardManager.getStatus(sender);
                 const lines = [
-                    `📥 当前暂存区：共 *${status.count}* 条转发记录`,
-                    `📦 收集模式（/collect）：${status.collectMode ? '已开启' : '未开启'}`
+                    t(lang, 'bot.buffer_count', { count: status.count }),
+                    t(lang, status.collectMode ? 'bot.buffer_collect_on' : 'bot.buffer_collect_off')
                 ];
                 if (status.previews.length > 0) {
-                    lines.push('', '最近几条预览：');
+                    lines.push('', t(lang, 'bot.buffer_preview_title'));
                     status.previews.forEach((p, idx) => {
                         lines.push(`${idx + 1}. ${p}`);
                     });
-                    lines.push('', '发送 `/analyze [你的问题]` 即可立即分析，或 `/clear` 清空。');
+                    lines.push('', t(lang, 'bot.buffer_preview_hint'));
                 }
                 await deliverReply(sender, lines.join('\n'), { applyDelay: false });
                 return true;
@@ -317,17 +324,13 @@ function createMessageHandler({
                 const nextEnabled = !current.collectMode;
                 forwardManager.setCollectMode(sender, nextEnabled);
                 if (nextEnabled) {
-                    await deliverReply(
-                        sender,
-                        '📦 已开启【手动收集模式】。现在可以分多批转发来自不同聊天的记录，全部转完后发送 `/analyze [你的问题]` 开始分析。',
-                        { applyDelay: false }
-                    );
+                    await deliverReply(sender, t(lang, 'bot.collect_enabled'), { applyDelay: false });
                 } else {
                     const updated = forwardManager.getStatus(sender);
-                    const tailHint = updated.count > 0
-                        ? `当前已暂存 ${updated.count} 条记录，可直接发送问题或 \`/analyze\` 开始分析。`
-                        : '已恢复常规自动响应模式。';
-                    await deliverReply(sender, `📦 已退出【手动收集模式】。${tailHint}`, { applyDelay: false });
+                    const msgKey = updated.count > 0
+                        ? 'bot.collect_disabled_with_items'
+                        : 'bot.collect_disabled_empty';
+                    await deliverReply(sender, t(lang, msgKey, { count: updated.count }), { applyDelay: false });
                 }
                 return true;
             }
@@ -335,54 +338,78 @@ function createMessageHandler({
                 const currentMode = memory.getMode(sender);
                 if (!arg) {
                     const list = MODE_NAMES.map((name) => {
-                        const info = ANALYSIS_MODES[name];
-                        const tag = name === currentMode ? ' ✅ 当前' : '';
-                        return `• \`${name}\`（${info.label}）：${info.description}${tag}`;
+                        const info = getModeDetails(name, lang);
+                        const tag = name === currentMode ? t(lang, 'bot.mode_current_tag') : '';
+                        return `• \`${name}\` (${info.label}): ${info.description}${tag}`;
                     }).join('\n');
                     await deliverReply(
                         sender,
-                        `*分析模式列表：*\n${list}\n\n发送 \`/mode 模式名\` 即可切换（例如 \`/mode reply\`）。`,
+                        `${t(lang, 'bot.mode_list_title')}\n${list}\n\n${t(lang, 'bot.mode_list_hint')}`,
                         { applyDelay: false }
                     );
                     return true;
                 }
                 const target = arg.toLowerCase();
-                if (!ANALYSIS_MODES[target]) {
+                if (!MODE_NAMES.includes(target)) {
                     await deliverReply(
                         sender,
-                        `⚠️ 未找到模式 \`${arg}\`。可选模式：${MODE_NAMES.map((n) => `\`${n}\``).join('、')}`,
+                        t(lang, 'bot.mode_not_found', {
+                            arg,
+                            modes: MODE_NAMES.map((n) => `\`${n}\``).join(', ')
+                        }),
                         { applyDelay: false }
                     );
                     return true;
                 }
                 memory.setMode(sender, target);
-                const info = ANALYSIS_MODES[target];
+                const info = getModeDetails(target, lang);
                 await deliverReply(
                     sender,
-                    `✅ 已切换分析模式为 *${info.label}*（\`${target}\`）：${info.description}`,
+                    t(lang, 'bot.mode_switched', {
+                        label: info.label,
+                        mode: target,
+                        desc: info.description
+                    }),
                     { applyDelay: false }
                 );
+                return true;
+            }
+            case 'lang': {
+                if (!arg) {
+                    const list = SUPPORTED_LANGS.map((code) => {
+                        const meta = LANG_META[code];
+                        const tag = code === lang ? t(lang, 'bot.mode_current_tag') : '';
+                        return `• \`${code}\` — ${meta.nativeName}${tag}`;
+                    }).join('\n');
+                    await deliverReply(
+                        sender,
+                        `${t(lang, 'bot.lang_list_title')}\n${list}\n\n${t(lang, 'bot.lang_list_hint')}`,
+                        { applyDelay: false }
+                    );
+                    return true;
+                }
+                const targetLang = resolveExplicitLang(arg);
+                if (!targetLang) {
+                    await deliverReply(sender, t(lang, 'bot.lang_invalid', { arg }), { applyDelay: false });
+                    return true;
+                }
+                if (typeof memory.setLang === 'function') {
+                    memory.setLang(sender, targetLang);
+                }
+                await deliverReply(sender, t(targetLang, 'bot.lang_switched'), { applyDelay: false });
                 return true;
             }
             case 'analyze': {
                 const status = forwardManager.getStatus(sender);
                 if (status.count === 0) {
-                    await deliverReply(
-                        sender,
-                        'ℹ️ 当前没有待分析的转发聊天记录。请先从其他对话长按多选转发消息过来，或直接发送 WhatsApp 导出的 `.txt` / `.zip` 文件。',
-                        { applyDelay: false }
-                    );
+                    await deliverReply(sender, t(lang, 'bot.analyze_empty'), { applyDelay: false });
                     return true;
                 }
                 await analyzeBufferedForwards(sender, arg, { exitCollectMode: true });
                 return true;
             }
             default: {
-                await deliverReply(
-                    sender,
-                    `ℹ️ 未识别的指令 \`/${cmd}\`，发送 \`/help\` 查看全部可用指令。`,
-                    { applyDelay: false }
-                );
+                await deliverReply(sender, t(lang, 'bot.unknown_cmd', { cmd }), { applyDelay: false });
                 return true;
             }
         }
@@ -393,17 +420,18 @@ function createMessageHandler({
             return false;
         }
 
+        const lang = getActiveLang(sender);
         let media;
         try {
             media = await msg.downloadMedia();
         } catch (error) {
-            logger.error('下载导出文件失败:', error);
-            await deliverReply(sender, '❌ 下载聊天记录文件失败，请重新发送一次。', { applyDelay: false });
+            logger.error('Failed to download exported chat document:', error);
+            await deliverReply(sender, t(lang, 'bot.export_download_fail'), { applyDelay: false });
             return true;
         }
 
         if (!media) {
-            await deliverReply(sender, '❌ 未能获取该文件内容（可能已过期），请重新发送。', { applyDelay: false });
+            await deliverReply(sender, t(lang, 'bot.export_unavailable'), { applyDelay: false });
             return true;
         }
 
@@ -424,12 +452,12 @@ function createMessageHandler({
                 config.maxChatExportChars
             );
         } catch (error) {
-            await deliverReply(sender, `❌ 无法解析聊天记录文件：${error.message}`, { applyDelay: false });
+            await deliverReply(sender, t(lang, 'bot.export_parse_fail', { msg: error.message }), { applyDelay: false });
             return true;
         }
 
         const mode = memory.getMode(sender);
-        const prompt = buildExportedChatPrompt(exportResult, userText, mode);
+        const prompt = buildExportedChatPrompt(exportResult, userText, mode, lang);
         await runLlmTurn(sender, prompt, { recordKind: 'export' });
         return true;
     }
@@ -470,6 +498,7 @@ function createMessageHandler({
             if (handledAsExport) return;
         }
 
+        const lang = getActiveLang(sender);
         const isForwarded = Boolean(msg.isForwarded || (Number(msg.forwardingScore) > 0));
         const quotedText = await resolveQuotedBody(msg);
         const mediaTag = msg.hasMedia
@@ -498,9 +527,10 @@ function createMessageHandler({
                         enqueueForSender(targetSender, async () => {
                             const status = forwardManager.getStatus(targetSender);
                             if (status.count === 0) return;
+                            const targetLang = getActiveLang(targetSender);
                             await deliverReply(
                                 targetSender,
-                                `📥 已暂存 ${count} 条转发记录，请直接发送你的问题，或发送 \`/analyze\` 开始分析。`,
+                                t(targetLang, 'bot.manual_ack', { count }),
                                 { applyDelay: false }
                             );
                         });
@@ -516,11 +546,7 @@ function createMessageHandler({
                 await maybeSendNonMultimodalWarning(sender, 'media');
                 return;
             }
-            await deliverReply(
-                sender,
-                '💡 不需要发截图哦！你可以直接在原对话里长按多选消息并*转发*给我，或者在对话右上角使用「导出聊天记录 (.txt / .zip)」直接发过来，我就能立刻帮你分析。',
-                { applyDelay: false }
-            );
+            await deliverReply(sender, t(lang, 'bot.no_screenshot_guide'), { applyDelay: false });
             return;
         }
 
@@ -538,7 +564,7 @@ function createMessageHandler({
             if (bufferStatus.collectMode) {
                 await deliverReply(
                     sender,
-                    `📦 当前处于手动收集模式，已暂存 *${bufferStatus.count}* 条记录。发送 \`/analyze ${userText}\` 可带着这个问题一起分析，或先发送 \`/collect\` 退出收集模式。`,
+                    t(lang, 'bot.collect_reminder', { count: bufferStatus.count, question: userText }),
                     { applyDelay: false }
                 );
                 return;
@@ -552,10 +578,10 @@ function createMessageHandler({
         const imageDataUrl = await tryDownloadImageDataUrl(msg);
         const promptParts = [];
         if (quotedText) {
-            promptParts.push(`[引用消息：${quotedText}]`);
+            promptParts.push(t(lang, 'bot.quoted_prefix', { quote: quotedText }));
         }
         if (msg.hasMedia && mediaTag && !imageDataUrl) {
-            promptParts.push(`[系统提示：用户附带了一个 ${mediaTag}，但当前未能读取图片/媒体内容；若对方是在发聊天截图，请温和提醒无需截图，直接多选转发原聊天记录或导出 .txt/.zip 文件即可]`);
+            promptParts.push(t(lang, 'bot.media_fallback_note', { mediaTag }));
         }
         promptParts.push(userText);
         const preWarningReason = (msg.hasMedia && !imageDataUrl) ? 'media' : 'initial';

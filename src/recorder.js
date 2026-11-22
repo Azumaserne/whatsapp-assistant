@@ -1,11 +1,6 @@
 const fs = require('fs');
 const path = require('path');
-
-const KIND_LABELS = {
-    forwarded: '转发聊天记录分析',
-    export: '导出聊天文件分析',
-    chat: '常规对话'
-};
+const { normalizeLang, t } = require('./i18n');
 
 /**
  * Format a Date object as local YYYY-MM-DD for daily Markdown record filenames.
@@ -46,34 +41,37 @@ function createDesktopRecorder({ recordsDir = null, logger = console, onSaved = 
             kind = 'chat',
             mode = 'general',
             model = '',
+            lang = 'zh',
             inputText = '',
             replyText = '',
             timestamp = new Date()
         } = {}) {
             try {
                 fs.mkdirSync(recordsDir, { recursive: true });
+                const activeLang = normalizeLang(lang, 'zh');
                 const ts = timestamp instanceof Date ? timestamp : new Date(timestamp);
                 const dateKey = formatDateKey(ts);
                 const timeStr = formatDateTime(ts);
-                const kindLabel = KIND_LABELS[kind] || KIND_LABELS.chat;
+                const kindKey = ['forwarded', 'export', 'chat'].includes(kind) ? `rec.kind.${kind}` : 'rec.kind.chat';
+                const kindLabel = t(activeLang, kindKey);
                 const filePath = path.join(recordsDir, `${dateKey}.md`);
 
                 const needsHeader = !fs.existsSync(filePath);
                 const sections = [];
                 if (needsHeader) {
-                    sections.push(`# WhatsApp AI Assistant 分析记录（${dateKey}）\n`);
+                    sections.push(`${t(activeLang, 'rec.title', { date: dateKey })}\n`);
                 }
                 sections.push(
                     `## [${timeStr}] ${kindLabel}`,
                     '',
-                    `- **联系人**: \`${sender || 'unknown'}\``,
-                    `- **分析模式**: \`${mode}\``,
-                    `- **使用模型**: \`${model || 'unknown'}\``,
+                    `- **${t(activeLang, 'rec.sender')}**: \`${sender || 'unknown'}\``,
+                    `- **${t(activeLang, 'rec.mode')}**: \`${mode}\``,
+                    `- **${t(activeLang, 'rec.model')}**: \`${model || 'unknown'}\``,
                     '',
-                    '### 📥 原始输入 / 聊天记录',
+                    t(activeLang, 'rec.input'),
                     String(inputText || '').trim(),
                     '',
-                    '### 🤖 AI 分析结果',
+                    t(activeLang, 'rec.output'),
                     String(replyText || '').trim(),
                     '',
                     '---',
@@ -87,7 +85,7 @@ function createDesktopRecorder({ recordsDir = null, logger = console, onSaved = 
                 }
                 return filePath;
             } catch (error) {
-                logger.error('保存桌面分析记录失败:', error);
+                logger.error('Failed to save Desktop analysis record:', error);
                 return null;
             }
         }

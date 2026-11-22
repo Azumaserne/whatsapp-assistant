@@ -1,4 +1,5 @@
 const fs = require('fs');
+const { normalizeLang, t } = require('./i18n');
 
 const DEFAULT_SYSTEM_PROMPT = [
     '你是一个接入 WhatsApp 的智能助手，擅长直接分析用户转发给你的 WhatsApp 聊天记录和导出的聊天文件（.txt / .zip），无需用户截图。',
@@ -6,35 +7,17 @@ const DEFAULT_SYSTEM_PROMPT = [
     '如果用户附带了具体问题，优先精准回答该问题；不要编造未在聊天记录中出现的事实。'
 ].join('\n');
 
-const ANALYSIS_MODES = {
-    general: {
-        label: '综合分析',
-        description: '脉络总结 + 情绪潜台词 + 回复建议',
-        instruction: '【当前分析模式：综合分析】请均衡输出：核心脉络/结论、关键信息与情绪潜台词、可执行建议或回复参考。'
-    },
-    summary: {
-        label: '精炼摘要',
-        description: '快速提炼时间线、结论与待办事项',
-        instruction: '【当前分析模式：精炼摘要】重点提炼核心结论、关键时间节点、分工/承诺与待办清单，保持极简干练。'
-    },
-    emotion: {
-        label: '情绪与潜台词',
-        description: '拆解态度变化、真实意图与沟通风险',
-        instruction: '【当前分析模式：情绪与潜台词】重点分析双方情绪温度、语气转折、隐藏顾虑、真实诉求与关系博弈信号。'
-    },
-    reply: {
-        label: '高情商回复',
-        description: '直接给出多风格可复制回复话术',
-        instruction: '【当前分析模式：高情商回复】极简概括背景后，重点提供 3 种不同风格（如：温和得体、简洁直接、幽默/留余地）的可直接复制回复草稿及适用场景。'
-    },
-    translate: {
-        label: '翻译与双语解读',
-        description: '精准翻译外语对话并解释地道语气',
-        instruction: '【当前分析模式：翻译与双语解读】逐段准确翻译外语对话（若原文为外语则译为中文，反之亦然），标注俚语/缩写/语气词的真实语境，并简要总结核心意思。'
-    }
-};
+const MODE_NAMES = ['general', 'summary', 'emotion', 'reply', 'translate'];
 
-const MODE_NAMES = Object.keys(ANALYSIS_MODES);
+function getModeDetails(mode, lang = 'zh') {
+    const validMode = MODE_NAMES.includes(mode) ? mode : 'general';
+    return {
+        name: validMode,
+        label: t(lang, `mode.${validMode}.label`),
+        description: t(lang, `mode.${validMode}.desc`),
+        instruction: t(lang, `mode.${validMode}.inst`)
+    };
+}
 
 /**
  * Hot-read base system prompt from prompt.txt with safe fallback.
@@ -54,15 +37,24 @@ function getBaseSystemPrompt(promptFile) {
 }
 
 /**
- * Build full system prompt combining hot-reloaded prompt.txt and active mode instruction.
+ * Build full system prompt combining hot-reloaded prompt.txt, mode instruction, and active UI language.
  * @param {string} promptFile
  * @param {string} [mode]
+ * @param {string} [lang]
  * @returns {string}
  */
-function buildSystemPrompt(promptFile, mode = 'general') {
+function buildSystemPrompt(promptFile, mode = 'general', lang = 'zh') {
+    const activeLang = normalizeLang(lang, 'zh');
     const base = getBaseSystemPrompt(promptFile);
-    const activeMode = ANALYSIS_MODES[mode] || ANALYSIS_MODES.general;
-    return `${base}\n\n${activeMode.instruction}`;
+    const modeInfo = getModeDetails(mode, activeLang);
+
+    const parts = [base, modeInfo.instruction];
+    if (activeLang === 'en') {
+        parts.push('Important: Respond to the user in English (unless they explicitly ask for another target language).');
+    } else if (activeLang === 'de') {
+        parts.push('Wichtig: Antworte dem Nutzer auf Deutsch (sofern er nicht ausdrücklich eine andere Zielsprache verlangt).');
+    }
+    return parts.join('\n\n');
 }
 
 /**
@@ -70,21 +62,23 @@ function buildSystemPrompt(promptFile, mode = 'general') {
  * @param {string} transcript
  * @param {string} [userQuestion]
  * @param {string} [mode]
+ * @param {string} [lang]
  * @returns {string}
  */
-function buildForwardedAnalysisPrompt(transcript, userQuestion = '', mode = 'general') {
-    const activeMode = ANALYSIS_MODES[mode] || ANALYSIS_MODES.general;
+function buildForwardedAnalysisPrompt(transcript, userQuestion = '', mode = 'general', lang = 'zh') {
+    const activeLang = normalizeLang(lang, 'zh');
+    const modeInfo = getModeDetails(mode, activeLang);
     const trimmedQuestion = String(userQuestion || '').trim();
 
     const parts = [
         transcript,
-        `分析模式：${activeMode.label}（${activeMode.description}）`
+        t(activeLang, 'prompt.mode_line', { label: modeInfo.label, desc: modeInfo.description })
     ];
 
     if (trimmedQuestion) {
-        parts.push(`用户附带的问题/要求：${trimmedQuestion}`);
+        parts.push(t(activeLang, 'prompt.question_line', { question: trimmedQuestion }));
     } else {
-        parts.push('用户未附带额外问题，请直接按当前分析模式对上述转发记录给出清晰、实用的解读与建议。');
+        parts.push(t(activeLang, 'prompt.no_question_forward'));
     }
 
     return parts.join('\n\n');
@@ -95,10 +89,12 @@ function buildForwardedAnalysisPrompt(transcript, userQuestion = '', mode = 'gen
  * @param {{ filename: string, entryName?: string|null, text: string, totalChars: number, keptChars: number, truncated: boolean }} exportResult
  * @param {string} [userQuestion]
  * @param {string} [mode]
+ * @param {string} [lang]
  * @returns {string}
  */
-function buildExportedChatPrompt(exportResult, userQuestion = '', mode = 'general') {
-    const activeMode = ANALYSIS_MODES[mode] || ANALYSIS_MODES.general;
+function buildExportedChatPrompt(exportResult, userQuestion = '', mode = 'general', lang = 'zh') {
+    const activeLang = normalizeLang(lang, 'zh');
+    const modeInfo = getModeDetails(mode, activeLang);
     const trimmedQuestion = String(userQuestion || '').trim();
 
     const sourceLabel = exportResult.entryName
@@ -106,22 +102,22 @@ function buildExportedChatPrompt(exportResult, userQuestion = '', mode = 'genera
         : exportResult.filename;
 
     const headerLines = [
-        `[以下是用户上传的 WhatsApp 导出聊天记录文件：${sourceLabel}]`,
+        t(activeLang, 'prompt.export_header', { source: sourceLabel }),
         exportResult.truncated
-            ? `注：原文件共 ${exportResult.totalChars} 字符，超出单次上下文上限，以下保留了最新 ${exportResult.keptChars} 字符的对话内容。`
-            : `注：共 ${exportResult.totalChars} 字符（完整保留）。`
+            ? t(activeLang, 'prompt.export_truncated', { total: exportResult.totalChars, kept: exportResult.keptChars })
+            : t(activeLang, 'prompt.export_full', { total: exportResult.totalChars })
     ];
 
     const parts = [
         headerLines.join('\n'),
-        `--- 聊天记录正文开始 ---\n${exportResult.text}\n--- 聊天记录正文结束 ---`,
-        `分析模式：${activeMode.label}（${activeMode.description}）`
+        `${t(activeLang, 'prompt.export_begin')}\n${exportResult.text}\n${t(activeLang, 'prompt.export_end')}`,
+        t(activeLang, 'prompt.mode_line', { label: modeInfo.label, desc: modeInfo.description })
     ];
 
     if (trimmedQuestion) {
-        parts.push(`用户附带的问题/要求：${trimmedQuestion}`);
+        parts.push(t(activeLang, 'prompt.question_line', { question: trimmedQuestion }));
     } else {
-        parts.push('用户未附带额外问题，请直接按当前分析模式对上述导出聊天记录给出结构化分析与建议。');
+        parts.push(t(activeLang, 'prompt.no_question_export'));
     }
 
     return parts.join('\n\n');
@@ -129,94 +125,91 @@ function buildExportedChatPrompt(exportResult, userQuestion = '', mode = 'genera
 
 /**
  * Build a user-facing WhatsApp warning when the active model is non-multimodal or unverified.
- * @param {{ model: string, multimodal?: { supported?: boolean, status?: string } }} config
+ * @param {{ model: string, lang?: string, multimodal?: { supported?: boolean, status?: string } }} config
  * @param {'initial'|'forwarded_media'|'media'} [reason]
+ * @param {string} [lang]
  * @returns {string|null}
  */
-function buildNonMultimodalWarning(config, reason = 'initial') {
+function buildNonMultimodalWarning(config, reason = 'initial', lang = undefined) {
     const multimodal = config?.multimodal;
     if (multimodal && multimodal.supported) {
         return null;
     }
 
-    const modelName = config?.model || '当前模型';
+    const activeLang = normalizeLang(lang || config?.lang, 'zh');
+    const modelName = config?.model || 'model';
     const isUnknown = multimodal?.status === 'unknown';
+    const prefix = isUnknown ? 'warn.unknown' : 'warn.nonmm';
+    const validReason = ['forwarded_media', 'media', 'initial'].includes(reason) ? reason : 'initial';
 
-    if (isUnknown) {
-        if (reason === 'forwarded_media') {
-            return `⚠️ 模型警告：当前配置的模型 \`${modelName}\` 未能自动确认是否支持多模态，本次转发包含图片/媒体消息，目前仅基于文字部分分析。如该模型支持识图，请在 \`.env\` 中设置 \`LLM_MULTIMODAL=true\`。`;
-        }
-        if (reason === 'media') {
-            return `⚠️ 模型警告：当前配置的模型 \`${modelName}\` 未能自动确认是否支持多模态，目前以纯文本模式运行，无法识别图片/媒体内容。无需发截图——请直接转发文字聊天记录或发送 \`.txt\` / \`.zip\` 导出文件；若该模型支持识图，请在 \`.env\` 设置 \`LLM_MULTIMODAL=true\`。`;
-        }
-        return `⚠️ 模型提醒：当前配置的模型 \`${modelName}\` 未能自动确认是否支持多模态，当前默认以纯文本模式运行（无法识图）。如该模型支持识图，可在 \`.env\` 中设置 \`LLM_MULTIMODAL=true\`。`;
-    }
-
-    if (reason === 'forwarded_media') {
-        return `⚠️ 模型警告：本次转发记录包含图片/媒体消息，但当前模型 \`${modelName}\` 为非多模态（纯文本）模型，无法查看媒体画面，以下分析仅基于文字部分。如需识图，请在 \`.env\` 更换多模态模型（如 \`gpt-4o-mini\`、\`gemini-2.5-flash\`、\`claude-3.5-sonnet\`）。`;
-    }
-    if (reason === 'media') {
-        return `⚠️ 模型警告：当前配置的模型 \`${modelName}\` 为非多模态（纯文本）模型，无法识别图片/媒体内容。无需发截图——请直接长按多选转发文字聊天记录或发送导出的 \`.txt\` / \`.zip\` 文件；若需分析图片，请在 \`.env\` 切换为多模态模型（如 \`gpt-4o-mini\` / \`gemini-2.5-flash\`）。`;
-    }
-    return `⚠️ 模型提醒：当前配置的模型 \`${modelName}\` 为非多模态（纯文本）模型，无法识别聊天中的图片、表情包或语音内容，仅分析纯文本与 \`.txt\` / \`.zip\` 导出记录。如需识图，请在 \`.env\` 更换多模态模型（如 \`gpt-4o-mini\`、\`gemini-2.5-flash\`、\`claude-3.5-sonnet\`）。`;
+    return t(activeLang, `${prefix}.${validReason}`, { model: modelName });
 }
 
 /**
  * Build user-facing WhatsApp help message.
- * @param {{ forwardAutoAnalyze: boolean, forwardDebounceMs: number, model: string, multimodal?: { supported?: boolean, status?: string } }} config
+ * @param {{ forwardAutoAnalyze: boolean, forwardDebounceMs: number, model: string, lang?: string, multimodal?: { supported?: boolean, status?: string } }} config
  * @param {string} [currentMode]
+ * @param {string} [lang]
  * @returns {string}
  */
-function buildHelpText(config, currentMode = 'general') {
-    const modeInfo = ANALYSIS_MODES[currentMode] || ANALYSIS_MODES.general;
+function buildHelpText(config, currentMode = 'general', lang = undefined) {
+    const activeLang = normalizeLang(lang || config?.lang, 'zh');
+    const modeInfo = getModeDetails(currentMode, activeLang);
     const forwardBehavior = config.forwardAutoAnalyze
-        ? `自动聚合分析（转发后约 ${Math.round(config.forwardDebounceMs / 1000)} 秒自动开始；期间发送提问则立即合并分析）`
-        : '手动触发分析（转发后先暂存，发送问题或 /analyze 后开始分析）';
+        ? t(activeLang, 'help.fwd.auto', { sec: Math.round(config.forwardDebounceMs / 1000) })
+        : t(activeLang, 'help.fwd.manual');
 
-    let multimodalTag = '✅ 支持多模态';
+    let mmKey = 'help.mm.supported';
     if (!config.multimodal?.supported) {
-        multimodalTag = config.multimodal?.status === 'unknown'
-            ? '⚠️ 未知（默认纯文本，可设 LLM_MULTIMODAL=true）'
-            : '⚠️ 非多模态（纯文本，无法识图）';
+        mmKey = config.multimodal?.status === 'unknown' ? 'help.mm.unknown' : 'help.mm.nonmm';
     }
+    const mmTag = t(activeLang, mmKey);
 
+    const activeModeName = MODE_NAMES.includes(currentMode) ? currentMode : 'general';
     const modeLines = MODE_NAMES.map((name) => {
-        const item = ANALYSIS_MODES[name];
-        const marker = name === (ANALYSIS_MODES[currentMode] ? currentMode : 'general') ? '（当前）' : '';
-        return `• ${name}${marker}：${item.label} - ${item.description}`;
+        const item = getModeDetails(name, activeLang);
+        const marker = name === activeModeName ? t(activeLang, 'help.current_tag') : '';
+        return `• ${name}${marker}: ${item.label} - ${item.description}`;
     }).join('\n');
 
     return [
-        '*WhatsApp AI 聊天记录分析助手*',
-        '无需截图！直接把聊天记录转过来就能分析。',
+        t(activeLang, 'help.title'),
+        t(activeLang, 'help.subtitle'),
         '',
-        '*两种核心用法：*',
-        '1. *直接转发聊天记录*：在任意聊天里长按多选消息 → 转发给本助手，再顺手发一句问题（如“对方什么意思 / 怎么回”），或等几秒自动分析。',
-        '2. *发送导出聊天文件*：在 WhatsApp 对话右上角「导出聊天记录 (Export Chat)」得到 `.txt` 或 `.zip` 后直接发给我，可附带文字提问。',
+        t(activeLang, 'help.usage_title'),
+        t(activeLang, 'help.usage_1'),
+        t(activeLang, 'help.usage_2'),
         '',
-        `*当前状态：* 模式 \`${currentMode}\`（${modeInfo.label}） | 模型 \`${config.model}\`（${multimodalTag}）`,
-        `*转发模式：* ${forwardBehavior}`,
+        t(activeLang, 'help.status_line', {
+            mode: activeModeName,
+            modeLabel: modeInfo.label,
+            model: config.model,
+            mmTag,
+            lang: activeLang
+        }),
+        t(activeLang, 'help.forward_line', { behavior: forwardBehavior }),
         '',
-        '*可用指令：*',
-        '• `/analyze [问题]` — 立即分析当前暂存的转发记录',
-        '• `/collect` — 开启/关闭手动收集模式（适合分多批跨聊天转发）',
-        '• `/buffer` — 查看当前已暂存的转发记录条数与预览',
-        '• `/clear` — 清空尚未分析的转发暂存区',
-        '• `/mode [名称]` — 查看或切换分析模式',
-        '• `/reset` — 清空当前会话记忆与转发暂存区',
-        '• `/help` — 查看本帮助说明',
+        t(activeLang, 'help.cmds_title'),
+        t(activeLang, 'help.cmd.analyze'),
+        t(activeLang, 'help.cmd.collect'),
+        t(activeLang, 'help.cmd.buffer'),
+        t(activeLang, 'help.cmd.clear'),
+        t(activeLang, 'help.cmd.mode'),
+        t(activeLang, 'help.cmd.lang'),
+        t(activeLang, 'help.cmd.reset'),
+        t(activeLang, 'help.cmd.help'),
         '',
-        '*可选分析模式：*',
+        t(activeLang, 'help.modes_title'),
         modeLines,
         '',
-        '_提示：本项目需自备 API Key；基于非官方协议接入，存在风控封号风险，请自负其责并建议使用小号。_'
+        t(activeLang, 'help.disclaimer')
     ].join('\n');
 }
 
 module.exports = {
     DEFAULT_SYSTEM_PROMPT,
-    ANALYSIS_MODES,
     MODE_NAMES,
+    getModeDetails,
     getBaseSystemPrompt,
     buildSystemPrompt,
     buildForwardedAnalysisPrompt,
