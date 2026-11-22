@@ -9,7 +9,7 @@
 [![OpenAI Compatible](https://img.shields.io/badge/API-OpenAI%20Compatible-412991?logo=openai&logoColor=white)](https://platform.openai.com/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
-*Designed & Authored by **[@Azumaserne](https://github.com/kaka714/whatsapp-assistant)***
+*Designed & Authored by **[@Azumaserne](https://github.com/Azumaserne/whatsapp-assistant)***
 
 <p>🌐 <strong>简体中文</strong> | <a href="README.en.md">English</a> | <a href="README.de.md">Deutsch</a></p>
 
@@ -62,7 +62,7 @@
 
 无需安装 Node.js、Git 或执行 `npm install`，适合所有 Windows 10/11 用户：
 
-1. 前往 [**GitHub Releases**](https://github.com/kaka714/whatsapp-assistant/releases/latest) 下载 `WhatsApp-Assistant-win-x64.exe`。
+1. 前往 [**GitHub Releases**](https://github.com/Azumaserne/whatsapp-assistant/releases/latest) 下载 `WhatsApp-Assistant-win-x64.exe`。
 2. 双击运行后，首先在窗口内选择语言：**简体中文 / English / Deutsch**。
 3. 在同一窗口中按向导填写 API 服务商、模型名（若选非多模态纯文本模型会即时弹出警告）、API Key 等选项；程序会自动检测本机 Edge / Chrome 浏览器，无需额外下载 Chromium。
 4. 随后 **WhatsApp 登录二维码会直接显示在当前窗口**，用 **WhatsApp 小号** 扫码连接即可使用。
@@ -86,7 +86,7 @@
 2. 克隆项目并安装依赖：
 
 ```bash
-git clone https://github.com/kaka714/whatsapp-assistant.git
+git clone https://github.com/Azumaserne/whatsapp-assistant.git
 cd whatsapp-assistant
 npm install
 ```
@@ -202,4 +202,4 @@ npm run build:exe   # 在 Windows 上打包 dist/WhatsApp-Assistant-win-x64.exe
 
 ## 📄 开源协议
 
-本项目基于 **[MIT License](LICENSE)** 开源，Copyright © 2026 **[Azumaserne](https://github.com/kaka714/whatsapp-assistant)**。
+本项目基于 **[MIT License](LICENSE)** 开源，Copyright © 2026 **[Azumaserne](https://github.com/Azumaserne/whatsapp-assistant)**。

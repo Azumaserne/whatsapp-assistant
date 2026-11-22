@@ -9,7 +9,7 @@
 [![OpenAI Compatible](https://img.shields.io/badge/API-OpenAI%20Compatible-412991?logo=openai&logoColor=white)](https://platform.openai.com/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
-*Designed & Authored by **[@Azumaserne](https://github.com/kaka714/whatsapp-assistant)***
+*Designed & Authored by **[@Azumaserne](https://github.com/Azumaserne/whatsapp-assistant)***
 
 <p>🌐 <a href="README.md">简体中文</a> | <strong>English</strong> | <a href="README.de.md">Deutsch</a></p>
 
@@ -62,7 +62,7 @@ Traditionally, getting ChatGPT, Claude, or DeepSeek to analyze a chat thread (e.
 
 No Node.js, Git, or `npm install` required on Windows 10/11:
 
-1. Download `WhatsApp-Assistant-win-x64.exe` from [**GitHub Releases**](https://github.com/kaka714/whatsapp-assistant/releases/latest).
+1. Download `WhatsApp-Assistant-win-x64.exe` from [**GitHub Releases**](https://github.com/Azumaserne/whatsapp-assistant/releases/latest).
 2. Double-click to launch and pick your preferred language (**简体中文 / English / Deutsch**).
 3. Follow the in-console prompts to select your API provider, model (non-multimodal models immediately trigger a clear warning), API key, and forwarding options. Existing Edge / Chrome is detected automatically—no Chromium download needed.
 4. Scan the **WhatsApp login QR code** rendered right inside the same console window with your secondary WhatsApp account.
@@ -86,7 +86,7 @@ No Node.js, Git, or `npm install` required on Windows 10/11:
 2. Clone the repository and install dependencies:
 
 ```bash
-git clone https://github.com/kaka714/whatsapp-assistant.git
+git clone https://github.com/Azumaserne/whatsapp-assistant.git
 cd whatsapp-assistant
 npm install
 ```
@@ -202,4 +202,4 @@ npm run build:exe   # Build standalone dist/WhatsApp-Assistant-win-x64.exe on Wi
 
 ## 📄 License
 
-Released under the **[MIT License](LICENSE)** — Copyright © 2026 **[Azumaserne](https://github.com/kaka714/whatsapp-assistant)**.
+Released under the **[MIT License](LICENSE)** — Copyright © 2026 **[Azumaserne](https://github.com/Azumaserne/whatsapp-assistant)**.

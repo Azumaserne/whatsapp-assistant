@@ -9,7 +9,7 @@
 [![OpenAI Compatible](https://img.shields.io/badge/API-OpenAI%20Compatible-412991?logo=openai&logoColor=white)](https://platform.openai.com/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
-*Designed & Authored by **[@Azumaserne](https://github.com/kaka714/whatsapp-assistant)***
+*Designed & Authored by **[@Azumaserne](https://github.com/Azumaserne/whatsapp-assistant)***
 
 <p>🌐 <a href="README.md">简体中文</a> | <a href="README.en.md">English</a> | <strong>Deutsch</strong></p>
 
@@ -62,7 +62,7 @@ Wer ChatGPT, Claude oder DeepSeek um eine Einschätzung zu einem WhatsApp-Verlau
 
 Unter Windows 10/11 sind weder Node.js noch Git oder `npm install` nötig:
 
-1. Laden Sie `WhatsApp-Assistant-win-x64.exe` von den [**GitHub Releases**](https://github.com/kaka714/whatsapp-assistant/releases/latest) herunter.
+1. Laden Sie `WhatsApp-Assistant-win-x64.exe` von den [**GitHub Releases**](https://github.com/Azumaserne/whatsapp-assistant/releases/latest) herunter.
 2. Doppelklicken Sie zum Starten und wählen Sie direkt im Fenster Ihre Sprache (**简体中文 / English / Deutsch**).
 3. Folgen Sie dem interaktiven Assistenten im selben Fenster (API-Anbieter, Modellname mit Sofortwarnung bei reinen Textmodellen, API-Schlüssel usw.). Vorhandenes Microsoft Edge / Chrome wird automatisch erkannt.
 4. Scannen Sie anschließend den **WhatsApp-Login-QR-Code im selben Konsolenfenster** mit Ihrem WhatsApp-Zweitkonto.
@@ -86,7 +86,7 @@ Unter Windows 10/11 sind weder Node.js noch Git oder `npm install` nötig:
 2. Repository klonen und Abhängigkeiten installieren:
 
 ```bash
-git clone https://github.com/kaka714/whatsapp-assistant.git
+git clone https://github.com/Azumaserne/whatsapp-assistant.git
 cd whatsapp-assistant
 npm install
 ```
@@ -202,4 +202,4 @@ npm run build:exe   # Eigenständige dist/WhatsApp-Assistant-win-x64.exe unter W
 
 ## 📄 Lizenz
 
-Veröffentlicht unter der **[MIT-Lizenz](LICENSE)** — Copyright © 2026 **[Azumaserne](https://github.com/kaka714/whatsapp-assistant)**.
+Veröffentlicht unter der **[MIT-Lizenz](LICENSE)** — Copyright © 2026 **[Azumaserne](https://github.com/Azumaserne/whatsapp-assistant)**.
