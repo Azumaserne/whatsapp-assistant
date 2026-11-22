@@ -11,6 +11,8 @@
 
 *Designed & Authored by **[@Azumaserne](https://github.com/kaka714/whatsapp-assistant)***
 
+<p>🌐 <strong>简体中文</strong> | <a href="README.en.md">English</a> | <a href="README.de.md">Deutsch</a></p>
+
 </div>
 
 ---
@@ -48,6 +50,7 @@
   - `reply`（高情商回复）：提供 3 种不同风格、可直接复制发送的回复话术
   - `translate`（翻译与双语解读）：精准翻译外语对话并解释俚语/语气
 - **🔌 通用 OpenAI 兼容接口**：只需配置 `LLM_BASE_URL`、`LLM_API_KEY`、`LLM_MODEL`，即可接入 OpenAI、DeepSeek、OpenRouter、Gemini（OpenAI 兼容端点）、Moonshot/Kimi、智谱 GLM、OneAPI/NewAPI 或本地 Ollama（同时兼容旧版 `DEEPSEEK_API_KEY`）。
+- **⚠️ 非多模态模型自动检测与消息警告**：自动识别当前模型是否具备识图能力（支持通过 `LLM_MULTIMODAL=auto|true|false` 覆盖）。若配置了**非多模态（纯文本）模型**（如 `deepseek-chat`、`deepseek-reasoner`、`moonshot-v1-8k`、`qwen2.5:7b` 等），助手会在终端和 **WhatsApp 消息** 中主动向用户发出警告；若使用**多模态模型**（如 `gpt-4o-mini`、`gemini-2.5-flash`、`claude-3.5-sonnet`），还可同时读取转发记录里附带的图片。
 - **🧠 持久化上下文 + 人设热更新**：对话记录保存在本地 `memory.json`（已忽略上传），支持 `/reset` 重置；随时编辑 `prompt.txt` 即可在下一条消息热生效。
 - **🛡️ 安全与防风控细节**：支持 `ALLOWED_NUMBERS` 联系人白名单（兼容普通手机号及 WhatsApp `@lid` 隐匿 ID）、默认仅响应私聊（自动过滤群聊与状态广播）、模拟“正在输入...”与随机延迟，以及可选的自聊窗口防死循环前缀保护。
 
@@ -147,6 +150,9 @@ whatsapp-assistant/
 ├── prompt.txt             # 默认分析助手 System Prompt（支持热更新）
 ├── .env.example           # 环境变量配置模板
 ├── LICENSE                # MIT 开源协议
+├── README.md              # 项目文档（简体中文）
+├── README.en.md           # 项目文档（English）
+├── README.de.md           # 项目文档（Deutsch）
 ├── src/
 │   ├── config.js          # 环境变量解析、旧版 DEEPSEEK_API_KEY 兼容与白名单校验
 │   ├── chatExport.js      # 纯 Node zlib 实现的 .txt / .zip 导出聊天记录解析与尾部截断
