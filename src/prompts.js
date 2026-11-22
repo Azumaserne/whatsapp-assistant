@@ -128,8 +128,42 @@ function buildExportedChatPrompt(exportResult, userQuestion = '', mode = 'genera
 }
 
 /**
+ * Build a user-facing WhatsApp warning when the active model is non-multimodal or unverified.
+ * @param {{ model: string, multimodal?: { supported?: boolean, status?: string } }} config
+ * @param {'initial'|'forwarded_media'|'media'} [reason]
+ * @returns {string|null}
+ */
+function buildNonMultimodalWarning(config, reason = 'initial') {
+    const multimodal = config?.multimodal;
+    if (multimodal && multimodal.supported) {
+        return null;
+    }
+
+    const modelName = config?.model || '当前模型';
+    const isUnknown = multimodal?.status === 'unknown';
+
+    if (isUnknown) {
+        if (reason === 'forwarded_media') {
+            return `⚠️ 模型警告：当前配置的模型 \`${modelName}\` 未能自动确认是否支持多模态，本次转发包含图片/媒体消息，目前仅基于文字部分分析。如该模型支持识图，请在 \`.env\` 中设置 \`LLM_MULTIMODAL=true\`。`;
+        }
+        if (reason === 'media') {
+            return `⚠️ 模型警告：当前配置的模型 \`${modelName}\` 未能自动确认是否支持多模态，目前以纯文本模式运行，无法识别图片/媒体内容。无需发截图——请直接转发文字聊天记录或发送 \`.txt\` / \`.zip\` 导出文件；若该模型支持识图，请在 \`.env\` 设置 \`LLM_MULTIMODAL=true\`。`;
+        }
+        return `⚠️ 模型提醒：当前配置的模型 \`${modelName}\` 未能自动确认是否支持多模态，当前默认以纯文本模式运行（无法识图）。如该模型支持识图，可在 \`.env\` 中设置 \`LLM_MULTIMODAL=true\`。`;
+    }
+
+    if (reason === 'forwarded_media') {
+        return `⚠️ 模型警告：本次转发记录包含图片/媒体消息，但当前模型 \`${modelName}\` 为非多模态（纯文本）模型，无法查看媒体画面，以下分析仅基于文字部分。如需识图，请在 \`.env\` 更换多模态模型（如 \`gpt-4o-mini\`、\`gemini-2.5-flash\`、\`claude-3.5-sonnet\`）。`;
+    }
+    if (reason === 'media') {
+        return `⚠️ 模型警告：当前配置的模型 \`${modelName}\` 为非多模态（纯文本）模型，无法识别图片/媒体内容。无需发截图——请直接长按多选转发文字聊天记录或发送导出的 \`.txt\` / \`.zip\` 文件；若需分析图片，请在 \`.env\` 切换为多模态模型（如 \`gpt-4o-mini\` / \`gemini-2.5-flash\`）。`;
+    }
+    return `⚠️ 模型提醒：当前配置的模型 \`${modelName}\` 为非多模态（纯文本）模型，无法识别聊天中的图片、表情包或语音内容，仅分析纯文本与 \`.txt\` / \`.zip\` 导出记录。如需识图，请在 \`.env\` 更换多模态模型（如 \`gpt-4o-mini\`、\`gemini-2.5-flash\`、\`claude-3.5-sonnet\`）。`;
+}
+
+/**
  * Build user-facing WhatsApp help message.
- * @param {{ forwardAutoAnalyze: boolean, forwardDebounceMs: number, model: string }} config
+ * @param {{ forwardAutoAnalyze: boolean, forwardDebounceMs: number, model: string, multimodal?: { supported?: boolean, status?: string } }} config
  * @param {string} [currentMode]
  * @returns {string}
  */
@@ -138,6 +172,13 @@ function buildHelpText(config, currentMode = 'general') {
     const forwardBehavior = config.forwardAutoAnalyze
         ? `自动聚合分析（转发后约 ${Math.round(config.forwardDebounceMs / 1000)} 秒自动开始；期间发送提问则立即合并分析）`
         : '手动触发分析（转发后先暂存，发送问题或 /analyze 后开始分析）';
+
+    let multimodalTag = '✅ 支持多模态';
+    if (!config.multimodal?.supported) {
+        multimodalTag = config.multimodal?.status === 'unknown'
+            ? '⚠️ 未知（默认纯文本，可设 LLM_MULTIMODAL=true）'
+            : '⚠️ 非多模态（纯文本，无法识图）';
+    }
 
     const modeLines = MODE_NAMES.map((name) => {
         const item = ANALYSIS_MODES[name];
@@ -153,7 +194,7 @@ function buildHelpText(config, currentMode = 'general') {
         '1. *直接转发聊天记录*：在任意聊天里长按多选消息 → 转发给本助手，再顺手发一句问题（如“对方什么意思 / 怎么回”），或等几秒自动分析。',
         '2. *发送导出聊天文件*：在 WhatsApp 对话右上角「导出聊天记录 (Export Chat)」得到 `.txt` 或 `.zip` 后直接发给我，可附带文字提问。',
         '',
-        `*当前状态：* 模式 \`${currentMode}\`（${modeInfo.label}） | 模型 \`${config.model}\``,
+        `*当前状态：* 模式 \`${currentMode}\`（${modeInfo.label}） | 模型 \`${config.model}\`（${multimodalTag}）`,
         `*转发模式：* ${forwardBehavior}`,
         '',
         '*可用指令：*',
@@ -180,5 +221,6 @@ module.exports = {
     buildSystemPrompt,
     buildForwardedAnalysisPrompt,
     buildExportedChatPrompt,
+    buildNonMultimodalWarning,
     buildHelpText
 };

@@ -55,7 +55,7 @@ class ForwardSessionManager {
     /**
      * Append a forwarded message item and schedule debounce callback if not in /collect mode.
      * @param {string} sender
-     * @param {{ text?: string, timestamp?: string|number|null, mediaType?: string|null, quotedText?: string|null }} item
+     * @param {{ text?: string, timestamp?: string|number|null, mediaType?: string|null, quotedText?: string|null, imageDataUrl?: string|null }} item
      * @param {{ onAutoAnalyze?: (sender: string) => void, onManualAck?: (sender: string, count: number) => void }} [callbacks]
      * @returns {number} Current buffered item count
      */
@@ -65,7 +65,8 @@ class ForwardSessionManager {
             text: String(item.text || '').trim(),
             timestamp: item.timestamp ?? null,
             mediaType: item.mediaType ? String(item.mediaType).trim() : null,
-            quotedText: item.quotedText ? String(item.quotedText).trim() : null
+            quotedText: item.quotedText ? String(item.quotedText).trim() : null,
+            imageDataUrl: item.imageDataUrl || null
         };
 
         if (state.items.length >= this.maxBufferItems) {

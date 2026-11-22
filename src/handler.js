@@ -6,6 +6,7 @@ const {
     buildSystemPrompt,
     buildForwardedAnalysisPrompt,
     buildExportedChatPrompt,
+    buildNonMultimodalWarning,
     buildHelpText
 } = require('./prompts');
 const { splitLongMessage, formatLlmError } = require('./llm');
@@ -65,6 +66,8 @@ function createMessageHandler({
     const senderQueues = new Map();
     /** @type {Set<string>} */
     const sentMessageIds = new Set();
+    /** @type {Set<string>} */
+    const warnedNonMultimodalSenders = new Set();
 
     function trackSentMessageId(msgId) {
         if (!msgId) return;
@@ -142,16 +145,70 @@ function createMessageHandler({
         return false;
     }
 
-    async function runLlmTurn(sender, userPrompt) {
+    async function maybeSendNonMultimodalWarning(sender, reason = 'initial') {
+        if (config.multimodal?.supported) return;
+        if (reason === 'initial' && warnedNonMultimodalSenders.has(sender)) return;
+
+        const warning = buildNonMultimodalWarning(config, reason);
+        if (!warning) return;
+
+        warnedNonMultimodalSenders.add(sender);
+        await deliverReply(sender, warning, { applyDelay: false });
+    }
+
+    async function tryDownloadImageDataUrl(msg) {
+        if (!config.multimodal?.supported || !msg.hasMedia || msg.type !== 'image') {
+            return null;
+        }
+        if (typeof msg.downloadMedia !== 'function') {
+            return null;
+        }
+
+        try {
+            const media = await msg.downloadMedia();
+            const mime = String(media?.mimetype || '').trim().toLowerCase().split(';')[0];
+            if (!media?.data || !mime.startsWith('image/')) {
+                return null;
+            }
+            const byteLen = Buffer.byteLength(media.data, 'base64');
+            const maxBytes = config.maxImageBytes || 5 * 1024 * 1024;
+            if (byteLen > maxBytes) {
+                return null;
+            }
+            return `data:${mime};base64,${media.data}`;
+        } catch (error) {
+            logger.error('下载图片失败，已回退为文本分析:', error);
+            return null;
+        }
+    }
+
+    async function runLlmTurn(sender, userPromptText, { imageDataUrls = [], preWarningReason = 'initial' } = {}) {
         if (!(await ensureApiKeyReady(sender))) return;
+
+        await maybeSendNonMultimodalWarning(sender, preWarningReason);
 
         const mode = memory.getMode(sender);
         const systemPrompt = buildSystemPrompt(config.promptFile, mode);
         const history = memory.getMessages(sender);
+        const maxImages = config.maxImagesPerBatch || 4;
+        const validImages = config.multimodal?.supported
+            ? imageDataUrls.filter(Boolean).slice(0, maxImages)
+            : [];
+
+        const userContent = validImages.length > 0
+            ? [
+                { type: 'text', text: userPromptText },
+                ...validImages.map((url) => ({
+                    type: 'image_url',
+                    image_url: { url }
+                }))
+            ]
+            : userPromptText;
+
         const messages = [
             { role: 'system', content: systemPrompt },
             ...history,
-            { role: 'user', content: userPrompt }
+            { role: 'user', content: userContent }
         ];
 
         try {
@@ -159,7 +216,7 @@ function createMessageHandler({
             const replyText = await llm.complete(messages);
             await clearTyping(sender);
             await deliverReply(sender, replyText, { applyDelay: true });
-            memory.appendTurn(sender, userPrompt, replyText);
+            memory.appendTurn(sender, userPromptText, replyText);
         } catch (error) {
             await clearTyping(sender);
             logger.error('LLM 调用失败:', error);
@@ -174,7 +231,17 @@ function createMessageHandler({
         const mode = memory.getMode(sender);
         const transcript = forwardManager.formatItems(items);
         const prompt = buildForwardedAnalysisPrompt(transcript, question, mode);
-        await runLlmTurn(sender, prompt);
+        const hasMediaItems = items.some((it) => Boolean(it.mediaType));
+        const maxImages = config.maxImagesPerBatch || 4;
+        const imageDataUrls = items
+            .map((it) => it.imageDataUrl)
+            .filter(Boolean)
+            .slice(0, maxImages);
+
+        await runLlmTurn(sender, prompt, {
+            imageDataUrls,
+            preWarningReason: hasMediaItems ? 'forwarded_media' : 'initial'
+        });
         return true;
     }
 
@@ -395,13 +462,15 @@ function createMessageHandler({
 
         // 2. Directly forwarded messages are batched/debounced (never treat forwarded text as bot commands)
         if (isForwarded) {
+            const imageDataUrl = await tryDownloadImageDataUrl(msg);
             forwardManager.addItem(
                 sender,
                 {
                     text: userText,
                     timestamp: msg.timestamp ?? null,
                     mediaType: mediaTag,
-                    quotedText
+                    quotedText,
+                    imageDataUrl
                 },
                 {
                     onAutoAnalyze: (targetSender) => {
@@ -425,8 +494,12 @@ function createMessageHandler({
             return;
         }
 
-        // 3. Non-forwarded, non-export media without text caption -> guide user to direct forwarding/export
+        // 3. Non-forwarded, non-export media without text caption -> warn if non-multimodal or guide user
         if (!userText && msg.hasMedia) {
+            if (!config.multimodal?.supported) {
+                await maybeSendNonMultimodalWarning(sender, 'media');
+                return;
+            }
             await deliverReply(
                 sender,
                 '💡 不需要发截图哦！你可以直接在原对话里长按多选消息并*转发*给我，或者在对话右上角使用「导出聊天记录 (.txt / .zip)」直接发过来，我就能立刻帮你分析。',
@@ -459,16 +532,21 @@ function createMessageHandler({
             return;
         }
 
-        // 6. Standard conversational follow-up (with optional quoted context / non-export media notice)
+        // 6. Standard conversational follow-up (with optional quoted context / image attachment)
+        const imageDataUrl = await tryDownloadImageDataUrl(msg);
         const promptParts = [];
         if (quotedText) {
             promptParts.push(`[引用消息：${quotedText}]`);
         }
-        if (msg.hasMedia && mediaTag) {
-            promptParts.push(`[系统提示：用户附带了一个 ${mediaTag}，但本助手不识别图片/媒体截图；若对方是在发聊天截图，请温和提醒无需截图，直接多选转发原聊天记录或导出 .txt/.zip 文件即可]`);
+        if (msg.hasMedia && mediaTag && !imageDataUrl) {
+            promptParts.push(`[系统提示：用户附带了一个 ${mediaTag}，但当前未能读取图片/媒体内容；若对方是在发聊天截图，请温和提醒无需截图，直接多选转发原聊天记录或导出 .txt/.zip 文件即可]`);
         }
         promptParts.push(userText);
-        await runLlmTurn(sender, promptParts.join('\n\n'));
+        const preWarningReason = (msg.hasMedia && !imageDataUrl) ? 'media' : 'initial';
+        await runLlmTurn(sender, promptParts.join('\n\n'), {
+            imageDataUrls: imageDataUrl ? [imageDataUrl] : [],
+            preWarningReason
+        });
     }
 
     /**

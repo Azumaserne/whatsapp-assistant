@@ -23,12 +23,19 @@ function printStartupBanner() {
     const forwardModeText = config.forwardAutoAnalyze
         ? `自动防抖分析 (${config.forwardDebounceMs}ms)`
         : '手动触发 (/analyze)';
+    let multimodalText = '✅ 已支持';
+    if (!config.multimodal.supported) {
+        multimodalText = config.multimodal.status === 'unknown'
+            ? '⚠️ 未知（默认纯文本，向用户发送警告；可设 LLM_MULTIMODAL=true）'
+            : '⚠️ 非多模态（纯文本，向用户发送警告）';
+    }
 
     console.log('\n============================================================');
     console.log('  WhatsApp AI Assistant  |  by @Azumaserne (MIT License)');
     console.log('============================================================');
     console.log(`• API 地址   : ${config.baseUrl}`);
     console.log(`• 默认模型   : ${config.model}`);
+    console.log(`• 多模态支持 : ${multimodalText}`);
     console.log(`• 转发模式   : ${forwardModeText}`);
     console.log(`• 自聊模式   : ${config.enableSelfChat ? '已开启 (Message Yourself)' : '未开启'}`);
     console.log(`• 白名单     : ${whitelistText}`);
@@ -38,6 +45,10 @@ function printStartupBanner() {
     console.log('   2. 基于非官方 whatsapp-web.js，存在封号/风控风险，');
     console.log('      封号概不负责，强烈建议使用独立小号运行！');
     console.log('============================================================\n');
+
+    if (!config.multimodal.supported) {
+        console.warn(`⚠️  当前模型 "${config.model}" ${config.multimodal.status === 'unknown' ? '未确认支持多模态' : '为非多模态（纯文本）模型'}，助手会在 WhatsApp 对话中向用户发送提醒/警告。\n`);
+    }
 
     if (!hasValidApiKey(config)) {
         console.warn('⚠️  未检测到有效的 API Key，请先在 .env 中填写 LLM_API_KEY（或 DEEPSEEK_API_KEY）。\n');

@@ -5,7 +5,7 @@ const os = require('node:os');
 const path = require('node:path');
 const zlib = require('node:zlib');
 
-const { loadConfig, hasValidApiKey, isSenderAllowed, normalizePhone } = require('../src/config');
+const { loadConfig, hasValidApiKey, isSenderAllowed, normalizePhone, detectModelMultimodal } = require('../src/config');
 const { isChatExportDocument, extractTextFromZipBuffer, truncateChatHistoryTail, parseChatExportMedia } = require('../src/chatExport');
 const { ForwardSessionManager } = require('../src/forwardBuffer');
 const { MemoryStore } = require('../src/memory');
@@ -463,4 +463,176 @@ test('llm: splits long replies cleanly and maps common API errors', async () => 
         model: 'test-model'
     });
     assert.equal(await svc.complete([{ role: 'user', content: 'hi' }]), 'ok');
+});
+
+test('config: detects multimodal, non-multimodal, unknown models, and LLM_MULTIMODAL overrides', () => {
+    for (const model of ['deepseek-chat', 'deepseek-reasoner', 'moonshot-v1-8k', 'glm-4-flash', 'qwen2.5:7b', 'o3-mini']) {
+        const res = detectModelMultimodal(model);
+        assert.equal(res.supported, false, `${model} should be non-multimodal`);
+        assert.equal(res.status, 'non-multimodal');
+        assert.equal(res.source, 'auto');
+    }
+
+    for (const model of ['gpt-4o-mini', 'gemini-2.5-flash', 'anthropic/claude-3.5-sonnet', 'glm-4v-flash', 'qwen2.5-vl-7b', 'o4-mini']) {
+        const res = detectModelMultimodal(model);
+        assert.equal(res.supported, true, `${model} should be multimodal`);
+        assert.equal(res.status, 'multimodal');
+        assert.equal(res.source, 'auto');
+    }
+
+    const unknown = detectModelMultimodal('my-private-model');
+    assert.equal(unknown.supported, false);
+    assert.equal(unknown.status, 'unknown');
+    assert.equal(unknown.source, 'auto');
+
+    assert.deepEqual(detectModelMultimodal('my-private-model', 'true'), {
+        supported: true,
+        status: 'multimodal',
+        source: 'env'
+    });
+    assert.deepEqual(detectModelMultimodal('gpt-4o-mini', 'false'), {
+        supported: false,
+        status: 'non-multimodal',
+        source: 'env'
+    });
+});
+
+test('handler: warns user on non-multimodal model (first turn, forwarded media, direct image, and /help)', async () => {
+    const h = createTestHarness({
+        LLM_API_KEY: '',
+        DEEPSEEK_API_KEY: 'sk-deepseek-valid-12345'
+    });
+    try {
+        assert.equal(h.config.model, 'deepseek-chat');
+        assert.equal(h.config.multimodal.supported, false);
+
+        const sender = 'ds-user@c.us';
+
+        // 1. First plain text turn emits initial warning + LLM reply
+        await h.handler({ from: sender, body: '帮我分析一下今天的工作安排' });
+        assert.equal(h.llmCalls.length, 1);
+        assert.equal(h.replies.length, 2);
+        assert.match(h.replies[0].text, /非多模态（纯文本）模型/);
+        assert.match(h.replies[1].text, /AI分析结果 #1/);
+
+        // 2. Second plain text turn should NOT repeat initial warning
+        await h.handler({ from: sender, body: '再补充一点细节' });
+        assert.equal(h.llmCalls.length, 2);
+        assert.equal(h.replies.length, 3);
+        assert.match(h.replies[2].text, /AI分析结果 #2/);
+
+        // 3. Forwarded batch containing [图片] emits explicit forwarded_media warning
+        await h.handler({ from: sender, body: '他刚发了这个图', isForwarded: true, hasMedia: true, type: 'image' });
+        await h.handler({ from: sender, body: '你说怎么回', isForwarded: true });
+        await new Promise((r) => setTimeout(r, 150));
+
+        assert.equal(h.llmCalls.length, 3);
+        assert.equal(h.replies.length, 5);
+        assert.match(h.replies[3].text, /本次转发记录包含图片\/媒体消息.*非多模态/);
+        assert.match(h.replies[4].text, /AI分析结果 #3/);
+
+        // 4. Direct image without caption emits non-multimodal media warning (no LLM call)
+        await h.handler({ from: sender, body: '', hasMedia: true, type: 'image', isForwarded: false });
+        assert.equal(h.llmCalls.length, 3);
+        assert.equal(h.replies.length, 6);
+        assert.match(h.replies[5].text, /非多模态（纯文本）模型，无法识别图片\/媒体内容/);
+
+        // 5. Direct image WITH caption emits non-multimodal media warning + text answer
+        await h.handler({ from: sender, body: '帮我看看截图里说的啥', hasMedia: true, type: 'image', isForwarded: false });
+        assert.equal(h.llmCalls.length, 4);
+        assert.equal(h.replies.length, 8);
+        assert.match(h.replies[6].text, /非多模态（纯文本）模型，无法识别图片\/媒体内容/);
+        assert.match(h.replies[7].text, /AI分析结果 #4/);
+
+        // 6. /help shows non-multimodal model status
+        await h.handler({ from: sender, body: '/help' });
+        assert.match(h.replies.at(-1).text, /deepseek-chat.*非多模态/);
+    } finally {
+        h.cleanup();
+    }
+});
+
+test('handler: warns user when unknown model defaults to text-only and hints LLM_MULTIMODAL=true', async () => {
+    const h = createTestHarness({
+        LLM_MODEL: 'my-custom-model'
+    });
+    try {
+        assert.equal(h.config.multimodal.status, 'unknown');
+        const sender = 'unknown-model-user@c.us';
+
+        await h.handler({ from: sender, body: '你好' });
+        assert.equal(h.replies.length, 2);
+        assert.match(h.replies[0].text, /LLM_MULTIMODAL=true/);
+        assert.match(h.replies[1].text, /AI分析结果 #1/);
+
+        await h.handler({ from: sender, body: '/help' });
+        assert.match(h.replies.at(-1).text, /未知.*LLM_MULTIMODAL=true/);
+    } finally {
+        h.cleanup();
+    }
+});
+
+test('handler: multimodal model emits no warning, attaches image_url parts, and stores text-only memory', async () => {
+    const h = createTestHarness({
+        LLM_MODEL: 'gpt-4o-mini'
+    });
+    try {
+        assert.equal(h.config.multimodal.supported, true);
+        const sender = 'mm-user@c.us';
+        const fakePngBase64 = Buffer.from('fake-png-bytes').toString('base64');
+
+        // Forwarded text + image -> vision payload sent to LLM, zero warnings, memory stays text-only
+        await h.handler({ from: sender, body: '这是对方发来的报价单', isForwarded: true });
+        await h.handler({
+            from: sender,
+            body: '你看看图里的价格',
+            isForwarded: true,
+            hasMedia: true,
+            type: 'image',
+            downloadMedia: async () => ({
+                mimetype: 'image/png',
+                data: fakePngBase64
+            })
+        });
+        await new Promise((r) => setTimeout(r, 150));
+
+        assert.equal(h.llmCalls.length, 1);
+        assert.equal(h.replies.length, 1);
+        assert.match(h.replies[0].text, /AI分析结果 #1/);
+
+        const forwardedUserContent = h.llmCalls[0].at(-1).content;
+        assert.equal(Array.isArray(forwardedUserContent), true);
+        assert.equal(forwardedUserContent[0].type, 'text');
+        assert.match(forwardedUserContent[0].text, /这是对方发来的报价单/);
+        assert.equal(forwardedUserContent[1].type, 'image_url');
+        assert.equal(forwardedUserContent[1].image_url.url, `data:image/png;base64,${fakePngBase64}`);
+
+        // Direct image with caption also attaches image_url
+        await h.handler({
+            from: sender,
+            body: '这张图什么意思',
+            hasMedia: true,
+            type: 'image',
+            isForwarded: false,
+            downloadMedia: async () => ({
+                mimetype: 'image/jpeg',
+                data: fakePngBase64
+            })
+        });
+        assert.equal(h.llmCalls.length, 2);
+        const directUserContent = h.llmCalls[1].at(-1).content;
+        assert.equal(Array.isArray(directUserContent), true);
+        assert.equal(directUserContent[1].image_url.url, `data:image/jpeg;base64,${fakePngBase64}`);
+
+        // Verify MemoryStore kept only plain text (never base64 data URLs)
+        const storedMessages = h.memory.getMessages(sender);
+        assert.equal(storedMessages.length, 4);
+        assert.equal(storedMessages.every((m) => typeof m.content === 'string' && !m.content.includes('data:image/')), true);
+
+        // /help shows multimodal supported
+        await h.handler({ from: sender, body: '/help' });
+        assert.match(h.replies.at(-1).text, /支持多模态/);
+    } finally {
+        h.cleanup();
+    }
 });
