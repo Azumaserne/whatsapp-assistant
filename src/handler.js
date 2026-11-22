@@ -56,6 +56,7 @@ function createMessageHandler({
     llm,
     memory,
     forwardManager,
+    recorder = null,
     sendReply,
     setTyping = async () => {},
     clearTyping = async () => {},
@@ -182,7 +183,7 @@ function createMessageHandler({
         }
     }
 
-    async function runLlmTurn(sender, userPromptText, { imageDataUrls = [], preWarningReason = 'initial' } = {}) {
+    async function runLlmTurn(sender, userPromptText, { imageDataUrls = [], preWarningReason = 'initial', recordKind = 'chat' } = {}) {
         if (!(await ensureApiKeyReady(sender))) return;
 
         await maybeSendNonMultimodalWarning(sender, preWarningReason);
@@ -217,6 +218,20 @@ function createMessageHandler({
             await clearTyping(sender);
             await deliverReply(sender, replyText, { applyDelay: true });
             memory.appendTurn(sender, userPromptText, replyText);
+            if (recorder && typeof recorder.record === 'function') {
+                try {
+                    recorder.record({
+                        sender,
+                        kind: recordKind,
+                        mode,
+                        model: config.model,
+                        inputText: userPromptText,
+                        replyText
+                    });
+                } catch (recError) {
+                    logger.error('记录分析历史失败:', recError);
+                }
+            }
         } catch (error) {
             await clearTyping(sender);
             logger.error('LLM 调用失败:', error);
@@ -240,7 +255,8 @@ function createMessageHandler({
 
         await runLlmTurn(sender, prompt, {
             imageDataUrls,
-            preWarningReason: hasMediaItems ? 'forwarded_media' : 'initial'
+            preWarningReason: hasMediaItems ? 'forwarded_media' : 'initial',
+            recordKind: 'forwarded'
         });
         return true;
     }
@@ -414,7 +430,7 @@ function createMessageHandler({
 
         const mode = memory.getMode(sender);
         const prompt = buildExportedChatPrompt(exportResult, userText, mode);
-        await runLlmTurn(sender, prompt);
+        await runLlmTurn(sender, prompt, { recordKind: 'export' });
         return true;
     }
 

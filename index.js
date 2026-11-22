@@ -1,5 +1,12 @@
-require('dotenv').config();
+const fs = require('fs');
 const path = require('path');
+const dotenv = require('dotenv');
+
+if (process.env.ENV_FILE && fs.existsSync(process.env.ENV_FILE)) {
+    dotenv.config({ path: process.env.ENV_FILE, override: true });
+} else {
+    dotenv.config();
+}
 
 // 让 Puppeteer 使用项目内自带缓存（必须在 require whatsapp-web.js 之前设置）
 process.env.PUPPETEER_CACHE_DIR =
@@ -12,6 +19,7 @@ const { loadConfig, hasValidApiKey } = require('./src/config');
 const { MemoryStore } = require('./src/memory');
 const { ForwardSessionManager } = require('./src/forwardBuffer');
 const { createOpenAIClient, createLlmService } = require('./src/llm');
+const { createDesktopRecorder } = require('./src/recorder');
 const { createMessageHandler, describeMediaType } = require('./src/handler');
 
 const config = loadConfig(process.env, __dirname);
@@ -39,6 +47,8 @@ function printStartupBanner() {
     console.log(`• 转发模式   : ${forwardModeText}`);
     console.log(`• 自聊模式   : ${config.enableSelfChat ? '已开启 (Message Yourself)' : '未开启'}`);
     console.log(`• 白名单     : ${whitelistText}`);
+    console.log(`• 数据目录   : ${config.dataDir}`);
+    console.log(`• 桌面记录   : ${config.recordsDir || '未启用（通过 start.cmd / whatsapp-assistant.ps1 启动将自动保存到桌面）'}`);
     console.log('------------------------------------------------------------');
     console.log('⚠️  重要声明：');
     console.log('   1. 本助手需自备 OpenAI 兼容 API Key（BYO API）。');
@@ -65,6 +75,13 @@ const memory = new MemoryStore({
 const forwardManager = new ForwardSessionManager({
     debounceMs: config.forwardDebounceMs,
     autoAnalyze: config.forwardAutoAnalyze
+});
+
+const recorder = createDesktopRecorder({
+    recordsDir: config.recordsDir,
+    onSaved: (filePath) => {
+        console.log(`💾 分析记录已保存到桌面: ${filePath}`);
+    }
 });
 
 const openaiClient = createOpenAIClient(config);
@@ -133,6 +150,7 @@ const handleIncomingMessage = createMessageHandler({
     llm,
     memory,
     forwardManager,
+    recorder,
     sendReply: async (sender, text) => {
         const sent = await client.sendMessage(sender, text);
         return sent?.id?._serialized || null;
@@ -160,6 +178,7 @@ client.on('qr', (qr) => {
     console.log('请使用作为助手的【WhatsApp 小号】扫描下方二维码登录：');
     console.log('========================================\n');
     qrcode.generate(qr, { small: true });
+    console.log('\n提示：若二维码因窗口较窄出现错行，请最大化窗口或按 Ctrl + 鼠标滚轮缩小字号后重新扫码。\n');
 });
 
 client.on('ready', () => {

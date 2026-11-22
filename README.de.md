@@ -58,13 +58,23 @@ Wer ChatGPT, Claude oder DeepSeek um eine Einschätzung zu einem WhatsApp-Verlau
 
 ## 🚀 Schnellstart
 
-### 1. Voraussetzungen
+### Option 1: Ein-Klick-PowerShell-Assistent für Windows (Empfohlen)
 
-- [Node.js](https://nodejs.org/) **18.0.0 oder neuer** (20 / 22 / 24 LTS empfohlen)
-- Ein **Zweitkonto bei WhatsApp** für den Bot
-- Ein eigener **LLM-API-Schlüssel**
+1. Doppelklicken Sie auf **`start.cmd`** (oder starten Sie `pwsh .\whatsapp-assistant.ps1` bzw. `.\whatsapp-assistant.ps1`).
+2. Direkt im **selben Konsolenfenster** prüft das Skript Node.js & Abhängigkeiten automatisch und führt Sie durch alle erforderlichen Eingaben (API-Anbieter, Modellname, API-Schlüssel, Weiterleitungsmodus, Whitelist, Selbstchat & erkannten Browserpfad) — inklusive sofortiger Warnung bei reinen Textmodellen.
+3. Direkt anschließend wird der **WhatsApp-Login-QR-Code im selben Fenster angezeigt**. Scannen Sie ihn mit Ihrem WhatsApp-Zweitkonto unter **Verknüpfte Geräte → Gerät hinzufügen**.
+4. Alle erfassten Einstellungen und täglichen Chat-Analysen werden automatisch auf Ihrem Desktop unter `<Desktop>\WhatsApp-Assistant-Data\` gespeichert:
+   - `config.env` — gespeicherte Laufzeitkonfiguration
+   - `setup-info.txt` — übersichtliche Zusammenfassung aller Eingaben
+   - `memory.json` — Gesprächsverlauf und Analyse-Modi pro Kontakt
+   - `records\YYYY-MM-DD.md` — tägliche Markdown-Archive aller Analysen
 
-### 2. Installation & Konfiguration
+> Tipp: Bei weiteren Starts genügt die Eingabetaste für den Schnellstart, oder wählen Sie `[2]`, um die Konfiguration anzupassen. Mit `Strg + C` beenden Sie das Programm sauber.
+
+### Option 2: Manuelle CLI-Einrichtung (macOS / Linux / Server)
+
+1. Stellen Sie sicher, dass [Node.js](https://nodejs.org/) **18.0.0 oder neuer** installiert ist, und halten Sie ein **WhatsApp-Zweitkonto** sowie Ihren eigenen **LLM-API-Schlüssel** bereit.
+2. Repository klonen und Abhängigkeiten installieren:
 
 ```bash
 git clone https://github.com/kaka714/whatsapp-assistant.git
@@ -72,14 +82,11 @@ cd whatsapp-assistant
 npm install
 ```
 
-Kopieren Sie `.env.example` nach `.env` und tragen Sie Ihre Zugangsdaten ein:
+3. `.env.example` nach `.env` kopieren und mindestens diese 3 Felder ausfüllen:
 
 ```bash
 cp .env.example .env
-# Unter Windows CMD: copy .env.example .env
 ```
-
-Bearbeiten Sie `.env` (mindestens diese 3 Felder):
 
 ```env
 LLM_API_KEY=sk-ihr-echter-api-schluessel
@@ -87,16 +94,13 @@ LLM_BASE_URL=https://api.openai.com/v1
 LLM_MODEL=gpt-4o-mini
 ```
 
-### 3. Starten & QR-Code scannen
+4. Starten und QR-Code scannen:
 
 ```bash
 npm start
-# Unter Windows alternativ Doppelklick auf start.cmd
 ```
 
-1. Sobald der QR-Code im Terminal erscheint, öffnen Sie auf Ihrem **WhatsApp-Zweitkonto** → **Verknüpfte Geräte** → **Gerät hinzufügen** und scannen ihn.
-2. Erscheint `✅ WhatsApp AI 助手已成功上线！`, können Sie von Ihrem Hauptkonto aus Nachrichten schreiben oder Chatverläufe weiterleiten.
-3. Die Sitzung bleibt in `.wwebjs_auth/` gespeichert, sodass beim Neustart kein erneutes Scannen nötig ist (`Strg + C` zum sauberen Beenden).
+Sobald der QR-Code erscheint, mit dem WhatsApp-Zweitkonto unter **Verknüpfte Geräte → Gerät hinzufügen** scannen. Nach `✅ WhatsApp AI 助手已成功上线！` ist der Assistent einsatzbereit. Die Sitzung bleibt in `.wwebjs_auth/` gespeichert.
 
 ---
 
@@ -146,7 +150,8 @@ npm start
 ```text
 whatsapp-assistant/
 ├── index.js               # Einstiegspunkt: WhatsApp-Client, Events und Nachrichten-Adapter
-├── start.cmd              # Windows-Startskript (prüft Node.js, .env und Abhängigkeiten)
+├── whatsapp-assistant.ps1 # Ein-Klick-PowerShell-Assistent, QR-Konsole & Desktop-Speicherung
+├── start.cmd              # Windows-Doppelklick-Starter (ruft pwsh / powershell auf)
 ├── prompt.txt             # Standard-System-Prompt (Hot-Reload bei jeder Anfrage)
 ├── .env.example           # Vorlage für Umgebungsvariablen
 ├── LICENSE                # MIT-Lizenz
@@ -154,12 +159,13 @@ whatsapp-assistant/
 ├── README.en.md           # Dokumentation (English)
 ├── README.de.md           # Dokumentation (Deutsch)
 ├── src/
-│   ├── config.js          # Env-Konfiguration, DEEPSEEK_API_KEY-Fallback & Whitelist-Prüfung
+│   ├── config.js          # Env-Konfiguration, Multimodal-Erkennung & Whitelist-Prüfung
 │   ├── chatExport.js      # Reiner Node-zlib-Parser für .txt- / .zip-Chatexporte
 │   ├── forwardBuffer.js   # Debounce-Sammler pro Absender & /collect-Zustandsverwaltung
-│   ├── prompts.js         # Prompt-Builder mit Hot-Reload & Analyse-Modi
+│   ├── prompts.js         # Prompt-Builder, Warnungen bei reinen Textmodellen & Modi
 │   ├── memory.js          # Lokale memory.json-Persistenz & Migration alter Formate
 │   ├── llm.js             # OpenAI-kompatibler Client, Nachrichten-Aufteilung & Fehlertexte
+│   ├── recorder.js        # Tägliche Markdown-Analysearchive im Desktop-Ordner
 │   └── handler.js         # Nachrichten-Router, serielle Warteschlange & Selbstchat-Schutz
 └── test/
     └── assistant.test.js  # Integrierte Node-Testsuite (Bündelung, ZIP-Parser, Befehle, Filter)

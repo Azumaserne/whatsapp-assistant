@@ -58,13 +58,23 @@
 
 ## 🚀 快速开始
 
-### 1. 环境准备
+### 方式一：Windows 一键启动向导（推荐，点击即跑）
 
-- [Node.js](https://nodejs.org/) **18.0.0 或更高版本**（推荐 20/22/24 LTS）
-- 一个用于挂载机器人的 **WhatsApp 小号**
-- 你自己的 **大模型 API Key**
+1. 双击根目录下的 **`start.cmd`**（或直接在 PowerShell 运行 `pwsh .\whatsapp-assistant.ps1` / `.\whatsapp-assistant.ps1`）。
+2. 程序会在**当前命令窗口内**自动检查 Node.js 与依赖，并引导填写所有必要信息（API 服务商预设、模型名、API Key、转发分析模式、白名单、自聊模式、浏览器路径等）；若选择了非多模态纯文本模型会即时给出黄色警告提示。
+3. 配置完成后，**WhatsApp 登录二维码会直接显示在同一个命令窗口中**，打开作为机器人的 **WhatsApp 小号** → **已连接的设备** → **连接设备** 扫码即可。
+4. 所有填写与记录的信息会自动保存到你的桌面目录 `<Desktop>\WhatsApp-Assistant-Data\`：
+   - `config.env`：运行配置文件
+   - `setup-info.txt`：人类可读的配置信息汇总
+   - `memory.json`：各联系人的对话记忆与分析模式
+   - `records\YYYY-MM-DD.md`：每日聊天分析与原始记录 Markdown 归档
 
-### 2. 安装依赖与配置
+> 提示：后续再次运行只需直接回车即可复用配置启动，也可输入 `2` 重新修改配置；按 `Ctrl + C` 安全退出。
+
+### 方式二：手动配置启动（macOS / Linux / 服务器）
+
+1. 确保已安装 [Node.js](https://nodejs.org/) **18.0.0 或更高版本**，并准备一个 **WhatsApp 小号** 与你自己的 **大模型 API Key**。
+2. 克隆项目并安装依赖：
 
 ```bash
 git clone https://github.com/kaka714/whatsapp-assistant.git
@@ -72,14 +82,11 @@ cd whatsapp-assistant
 npm install
 ```
 
-复制配置模板为 `.env` 并填入你的 API 信息：
+3. 复制配置模板为 `.env` 并填入你的 API 信息（至少填写前 3 项）：
 
 ```bash
 cp .env.example .env
-# Windows CMD 可用：copy .env.example .env
 ```
-
-编辑 `.env`（至少填写前 3 项）：
 
 ```env
 LLM_API_KEY=sk-你的真实密钥
@@ -87,16 +94,13 @@ LLM_BASE_URL=https://api.openai.com/v1
 LLM_MODEL=gpt-4o-mini
 ```
 
-### 3. 启动与扫码登录
+4. 启动并扫码登录：
 
 ```bash
 npm start
-# Windows 也可直接双击 start.cmd
 ```
 
-1. 终端显示二维码后，打开作为机器人的 **WhatsApp 小号** → **已连接的设备 (Linked Devices)** → **连接设备** → 扫码。
-2. 看到 `✅ WhatsApp AI 助手已成功上线！` 后，用你的主号给这个小号发一条消息或直接转发一段聊天记录即可开始使用。
-3. 登录态缓存在 `.wwebjs_auth/` 目录，下次重启无需重复扫码（`Ctrl + C` 可安全退出）。
+终端出现二维码后，使用 **WhatsApp 小号** 扫码连接设备，看到 `✅ WhatsApp AI 助手已成功上线！` 即可开始使用。登录态缓存在 `.wwebjs_auth/`，下次启动无需重复扫码。
 
 ---
 
@@ -146,7 +150,8 @@ npm start
 ```text
 whatsapp-assistant/
 ├── index.js               # 程序入口：WhatsApp 客户端连接、状态事件与消息适配
-├── start.cmd              # Windows 一键启动脚本（含 Node / .env / 依赖检查）
+├── whatsapp-assistant.ps1 # Windows PowerShell 一键交互向导、扫码启动与桌面归档脚本
+├── start.cmd              # Windows 双击启动入口（自动调用 pwsh / powershell）
 ├── prompt.txt             # 默认分析助手 System Prompt（支持热更新）
 ├── .env.example           # 环境变量配置模板
 ├── LICENSE                # MIT 开源协议
@@ -154,12 +159,13 @@ whatsapp-assistant/
 ├── README.en.md           # 项目文档（English）
 ├── README.de.md           # 项目文档（Deutsch）
 ├── src/
-│   ├── config.js          # 环境变量解析、旧版 DEEPSEEK_API_KEY 兼容与白名单校验
+│   ├── config.js          # 环境变量解析、多模态模型检测、旧版兼容与白名单校验
 │   ├── chatExport.js      # 纯 Node zlib 实现的 .txt / .zip 导出聊天记录解析与尾部截断
 │   ├── forwardBuffer.js   # Per-sender 转发消息防抖聚合器与 /collect 收集状态管理
-│   ├── prompts.js         # prompt.txt 热加载、分析模式切换与提示词拼装
+│   ├── prompts.js         # prompt.txt 热加载、非多模态警告与分析模式提示词拼装
 │   ├── memory.js          # 本地 memory.json 持久化与旧版记忆格式自动迁移
 │   ├── llm.js             # OpenAI 兼容接口封装、长消息智能分段与常见错误提示
+│   ├── recorder.js        # 桌面每日 Markdown 分析记录归档器
 │   └── handler.js         # 核心消息调度、串行队列、防自聊死循环与指令路由
 └── test/
     └── assistant.test.js  # Node 原生测试套件（覆盖转发聚合、ZIP 解析、指令与安全边界）

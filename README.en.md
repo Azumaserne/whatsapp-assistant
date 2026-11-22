@@ -58,13 +58,23 @@ Traditionally, getting ChatGPT, Claude, or DeepSeek to analyze a chat thread (e.
 
 ## 🚀 Quick Start
 
-### 1. Prerequisites
+### Option 1: One-Click Windows PowerShell Launcher (Recommended)
 
-- [Node.js](https://nodejs.org/) **18.0.0 or higher** (20 / 22 / 24 LTS recommended)
-- A **secondary WhatsApp account** to host the assistant
-- Your own **LLM API Key**
+1. Double-click **`start.cmd`** (or run `pwsh .\whatsapp-assistant.ps1` / `.\whatsapp-assistant.ps1` in PowerShell).
+2. Inside the **same command window**, the wizard automatically checks Node.js & dependencies and walks you through all required inputs (API provider preset, model name, API key, forwarding trigger mode, whitelist, self-chat option, and detected browser path), displaying an immediate warning if a non-multimodal model is selected.
+3. Once configured, the **WhatsApp login QR code renders directly in the same command window**—scan it with your secondary WhatsApp account via **Linked Devices → Link a Device**.
+4. All recorded information and daily analysis logs are automatically saved to your Desktop under `<Desktop>\WhatsApp-Assistant-Data\`:
+   - `config.env` — saved runtime configuration
+   - `setup-info.txt` — human-readable summary of all entered settings
+   - `memory.json` — per-contact conversation history and active modes
+   - `records\YYYY-MM-DD.md` — daily Markdown archives of analyzed chats
 
-### 2. Installation & Configuration
+> Tip: On subsequent runs, press Enter to launch directly with your saved settings, or pick `[2]` to reconfigure. Press `Ctrl + C` for a clean exit.
+
+### Option 2: Manual CLI Setup (macOS / Linux / Servers)
+
+1. Make sure [Node.js](https://nodejs.org/) **18.0.0 or higher** is installed, and prepare a **secondary WhatsApp account** plus your own **LLM API Key**.
+2. Clone the repository and install dependencies:
 
 ```bash
 git clone https://github.com/kaka714/whatsapp-assistant.git
@@ -72,14 +82,11 @@ cd whatsapp-assistant
 npm install
 ```
 
-Copy `.env.example` to `.env` and fill in your credentials:
+3. Copy `.env.example` to `.env` and fill in at least these 3 credentials:
 
 ```bash
 cp .env.example .env
-# On Windows CMD: copy .env.example .env
 ```
-
-Edit `.env` (at minimum, set these 3 variables):
 
 ```env
 LLM_API_KEY=sk-your-real-api-key
@@ -87,16 +94,13 @@ LLM_BASE_URL=https://api.openai.com/v1
 LLM_MODEL=gpt-4o-mini
 ```
 
-### 3. Launch & Link Device
+4. Launch and scan the QR code:
 
 ```bash
 npm start
-# On Windows, you can also double-click start.cmd
 ```
 
-1. When the QR code appears in the terminal, open your **secondary WhatsApp account** → **Linked Devices** → **Link a Device** and scan it.
-2. Once you see `✅ WhatsApp AI 助手已成功上线！`, send a message or forward a chat snippet from your primary phone to get started.
-3. Session credentials are cached in `.wwebjs_auth/` so you won't need to re-scan on restart (press `Ctrl + C` for a clean shutdown).
+When the QR code appears in the terminal, scan it from your secondary WhatsApp account under **Linked Devices → Link a Device**. Once `✅ WhatsApp AI 助手已成功上线！` appears, you are ready to go. Session state is cached in `.wwebjs_auth/`.
 
 ---
 
@@ -146,7 +150,8 @@ npm start
 ```text
 whatsapp-assistant/
 ├── index.js               # Entry point: WhatsApp client setup, events, and message adapter
-├── start.cmd              # Windows launcher with Node.js / .env / dependency checks
+├── whatsapp-assistant.ps1 # One-click PowerShell wizard, QR console & Desktop saving
+├── start.cmd              # Double-click Windows launcher (auto-invokes pwsh / powershell)
 ├── prompt.txt             # Default assistant System Prompt (hot-reloaded on every turn)
 ├── .env.example           # Environment configuration template
 ├── LICENSE                # MIT License
@@ -154,12 +159,13 @@ whatsapp-assistant/
 ├── README.en.md           # Documentation (English)
 ├── README.de.md           # Documentation (Deutsch)
 ├── src/
-│   ├── config.js          # Env parsing, legacy DEEPSEEK_API_KEY fallback & whitelist checks
+│   ├── config.js          # Env parsing, multimodal detection, legacy fallback & whitelist
 │   ├── chatExport.js      # Pure-Node zlib parser for .txt / .zip WhatsApp chat exports
 │   ├── forwardBuffer.js   # Per-sender debounce batcher & /collect state management
-│   ├── prompts.js         # Hot-reloaded prompt builder & analysis mode instructions
+│   ├── prompts.js         # Hot-reloaded prompts, non-multimodal warnings & mode instructions
 │   ├── memory.js          # Local memory.json persistence & legacy format migration
 │   ├── llm.js             # OpenAI-compatible wrapper, message chunking & error mapping
+│   ├── recorder.js        # Desktop daily Markdown analysis archive writer
 │   └── handler.js         # Message router, per-sender serial queue & self-chat loop guard
 └── test/
     └── assistant.test.js  # Built-in Node test suite (batching, ZIP parsing, commands, guards)

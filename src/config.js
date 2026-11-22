@@ -145,6 +145,13 @@ function loadConfig(env = process.env, baseDir = path.resolve(__dirname, '..')) 
         ? env.SELF_CHAT_REPLY_PREFIX
         : '🤖 ';
 
+    const explicitDataDir = (env.DATA_DIR || '').trim();
+    const dataDir = explicitDataDir ? path.resolve(explicitDataDir) : baseDir;
+    const explicitRecordsDir = (env.RECORDS_DIR || '').trim();
+    const recordsDir = explicitRecordsDir
+        ? path.resolve(explicitRecordsDir)
+        : (explicitDataDir ? path.join(dataDir, 'records') : null);
+
     return {
         apiKey,
         baseUrl,
@@ -165,8 +172,10 @@ function loadConfig(env = process.env, baseDir = path.resolve(__dirname, '..')) 
         replyDelayMinMs,
         replyDelayMaxMs,
         chromePath: (env.CHROME_PATH || '').trim() || undefined,
+        dataDir,
+        recordsDir,
         promptFile: path.join(baseDir, 'prompt.txt'),
-        memoryFile: path.join(baseDir, 'memory.json')
+        memoryFile: path.join(dataDir, 'memory.json')
     };
 }
 

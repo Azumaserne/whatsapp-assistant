@@ -6,7 +6,7 @@
   "scripts": {
     "start": "node index.js",
     "test": "node --test test/assistant.test.js",
-    "check": "node --check index.js src/config.js src/chatExport.js src/forwardBuffer.js src/prompts.js src/memory.js src/llm.js src/handler.js"
+    "check": "node --check index.js src/config.js src/chatExport.js src/forwardBuffer.js src/prompts.js src/memory.js src/llm.js src/recorder.js src/handler.js"
   },
   "keywords": [
     "whatsapp",

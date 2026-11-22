@@ -10,6 +10,7 @@ const { isChatExportDocument, extractTextFromZipBuffer, truncateChatHistoryTail,
 const { ForwardSessionManager } = require('../src/forwardBuffer');
 const { MemoryStore } = require('../src/memory');
 const { createLlmService, splitLongMessage, formatLlmError } = require('../src/llm');
+const { createDesktopRecorder, formatDateKey } = require('../src/recorder');
 const { createMessageHandler } = require('../src/handler');
 
 /**
@@ -634,5 +635,87 @@ test('handler: multimodal model emits no warning, attaches image_url parts, and 
         assert.match(h.replies.at(-1).text, /支持多模态/);
     } finally {
         h.cleanup();
+    }
+});
+
+test('recorder & DATA_DIR: resolves Desktop data paths, creates nested directories, and archives Markdown records', async () => {
+    const tmpRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'wa-desktop-data-'));
+    try {
+        const customDataDir = path.join(tmpRoot, 'Desktop', 'WhatsApp-Assistant-Data');
+        const cfg = loadConfig({ LLM_API_KEY: 'sk-test', DATA_DIR: customDataDir }, tmpRoot);
+        assert.equal(cfg.dataDir, path.resolve(customDataDir));
+        assert.equal(cfg.memoryFile, path.join(path.resolve(customDataDir), 'memory.json'));
+        assert.equal(cfg.recordsDir, path.join(path.resolve(customDataDir), 'records'));
+        assert.equal(cfg.promptFile, path.join(tmpRoot, 'prompt.txt'));
+
+        // MemoryStore creates missing parent directories automatically
+        const memStore = new MemoryStore({ filePath: cfg.memoryFile, maxHistory: 10 });
+        memStore.appendTurn('u1@c.us', 'hello', 'world');
+        assert.equal(fs.existsSync(cfg.memoryFile), true);
+
+        // createDesktopRecorder writes daily Markdown files with forwarded/export/chat labels
+        const savedFiles = [];
+        const recorder = createDesktopRecorder({
+            recordsDir: cfg.recordsDir,
+            onSaved: (p) => savedFiles.push(p)
+        });
+        const fixedDate = new Date(2026, 10, 22, 20, 45, 10);
+        const writtenPath = recorder.record({
+            sender: 'u1@c.us',
+            kind: 'forwarded',
+            mode: 'reply',
+            model: 'gpt-4o-mini',
+            inputText: '1. 明早开会',
+            replyText: '收到，已安排',
+            timestamp: fixedDate
+        });
+        assert.equal(writtenPath, path.join(cfg.recordsDir, `${formatDateKey(fixedDate)}.md`));
+        assert.equal(savedFiles.length, 1);
+        const mdContent = fs.readFileSync(writtenPath, 'utf-8');
+        assert.match(mdContent, /转发聊天记录分析/);
+        assert.match(mdContent, /`reply`/);
+        assert.match(mdContent, /1\. 明早开会/);
+        assert.match(mdContent, /收到，已安排/);
+
+        // Handler passes kind='forwarded', 'export', 'chat' to recorder and survives recorder errors
+        const recordedKinds = [];
+        const throwingHandler = createMessageHandler({
+            config: cfg,
+            llm: { async complete() { return 'ok-reply'; } },
+            memory: new MemoryStore({ filePath: null }),
+            forwardManager: new ForwardSessionManager({ debounceMs: 40, autoAnalyze: true }),
+            recorder: {
+                record(entry) {
+                    recordedKinds.push(entry.kind);
+                    if (entry.kind === 'chat') {
+                        throw new Error('disk full');
+                    }
+                }
+            },
+            sendReply: async () => 'id-1',
+            sleep: async () => {},
+            logger: { error: () => {}, warn: () => {}, log: () => {} }
+        });
+
+        await throwingHandler({ from: 'u1@c.us', body: '转发记录', isForwarded: true });
+        await new Promise((r) => setTimeout(r, 100));
+        await throwingHandler({
+            from: 'u1@c.us',
+            body: '',
+            hasMedia: true,
+            type: 'document',
+            filename: 'chat.txt',
+            mimetype: 'text/plain',
+            downloadMedia: async () => ({
+                filename: 'chat.txt',
+                mimetype: 'text/plain',
+                data: Buffer.from('A: hello', 'utf-8').toString('base64')
+            })
+        });
+        await throwingHandler({ from: 'u1@c.us', body: '普通消息' });
+
+        assert.deepEqual(recordedKinds, ['forwarded', 'export', 'chat']);
+    } finally {
+        fs.rmSync(tmpRoot, { recursive: true, force: true });
     }
 });

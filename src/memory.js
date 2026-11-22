@@ -1,4 +1,5 @@
 const fs = require('fs');
+const path = require('path');
 
 const VALID_ROLES = new Set(['user', 'assistant']);
 
@@ -106,6 +107,7 @@ class MemoryStore {
 
     save() {
         if (!this.filePath) return;
+        fs.mkdirSync(path.dirname(this.filePath), { recursive: true });
         fs.writeFileSync(this.filePath, JSON.stringify(this.data, null, 2), 'utf-8');
     }
 }
